@@ -255,7 +255,7 @@ async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_id = update.message.message_id
     with PROCESSING_LOCK:
-        if message_id in PROCESSED_MESSAGES:
+        if message_id in PROCESSED  PROCESSED_MESSAGES:
             logger.warning(f"پیام تکراری در گروه با message_id: {message_id} - نادیده گرفته شد")
             return
         PROCESSED_MESSAGES.add(message_id)
@@ -348,8 +348,8 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
                 location = user_message.split("توی")[-1].strip()
                 context.user_data["location"] = location
 
-            # اضافه کردن دکمه شیشه‌ای برای تبدیل به وویس
-            keyboard = [[InlineKeyboardButton("🎙️ بشنو به صورت وویس", callback_data=f"to_voice_{message_id}")]]
+            # ارسال پیام و گرفتن message_id واقعی
+            keyboard = [[InlineKeyboardButton("🎙️ بشنو به صورت وویس", callback_data=f"to_voice_{chat_id}_{thread_id or 0}")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             sent_message = await update.message.reply_text(
@@ -359,9 +359,16 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
                 reply_markup=reply_markup,
                 parse_mode="HTML"
             )
-            # ذخیره پاسخ ربات در تاریخچه گروه
+            # ذخیره پاسخ ربات در تاریخچه گروه با message_id واقعی
             group_history.append({"user_id": context.bot.id, "content": ai_response, "message_id": sent_message.message_id})
             context.bot_data["group_history"] = {chat_id: group_history}
+            # ذخیره موقت متن و message_id برای دسترسی سریع
+            context.user_data["last_ai_message"] = {
+                "text": ai_response,
+                "message_id": sent_message.message_id,
+                "chat_id": chat_id,
+                "thread_id": thread_id
+            }
         else:
             error_message = "اوفف، <b>یه مشکلی پیش اومد!</b> 😅 <i>بعداً امتحان کن</i> 🚀"
             await update.message.reply_text(
@@ -448,17 +455,27 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    message_id = int(query.data.split("_")[-1])
     chat_id = update.effective_chat.id
     thread_id = query.message.message_thread_id if hasattr(query.message, 'message_thread_id') else None
+    message_id = query.message.message_id  # message_id پیام ربات که دکمه روش زده شده
     
-    # پیدا کردن متن پیام از تاریخچه گروه
-    group_history = context.bot_data.get("group_history", {}).get(chat_id, [])
+    # گرفتن اطلاعات آخرین پیام از context.user_data
+    last_ai_message = context.user_data.get("last_ai_message", {})
     message_text = None
-    for msg in group_history:
-        if msg["message_id"] == message_id and msg["user_id"] == context.bot.id:
-            message_text = msg["content"]
-            break
+    
+    # چک کردن اینکه پیام کلیک‌شده همون آخرین پیام رباته
+    if (last_ai_message.get("message_id") == message_id and 
+        last_ai_message.get("chat_id") == chat_id and 
+        last_ai_message.get("thread_id") == thread_id):
+        message_text = last_ai_message.get("text")
+    
+    if not message_text:
+        # اگه توی context پیدا نشد، از تاریخچه گروه بگیریم
+        group_history = context.bot_data.get("group_history", {}).get(chat_id, [])
+        for msg in reversed(group_history):
+            if msg["message_id"] == message_id and msg["user_id"] == context.bot.id:
+                message_text = msg["content"]
+                break
     
     if not message_text:
         await query.edit_message_text("اوپس! <b>متن پیدا نشد!</b> 😅 <i>دوباره امتحان کن</i>", parse_mode="HTML")
@@ -491,7 +508,7 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=chat_id,
                 voice=voice_file,
                 caption=f"<i>وویس از متن: {clean_text(message_text[:50])}...</i>",
-                reply_to_message_id=message_id,
+                reply_to_message_id=message_id,  # ریپلای به پیام اصلی ربات
                 message_thread_id=thread_id,
                 parse_mode="HTML"
             )
@@ -590,7 +607,7 @@ async def initialize_application():
             application.add_handler(CallbackQueryHandler(chat_with_ai, pattern="^chat_with_ai$"))
             application.add_handler(CallbackQueryHandler(back_to_home, pattern="^back_to_home$"))
             application.add_handler(CallbackQueryHandler(select_size_photo, pattern="^size_.*_photo$"))
-            application.add_handler(CallbackQueryHandler(convert_to_voice, pattern="^to_voice_"))  # Handler جدید برای وویس
+            application.add_handler(CallbackQueryHandler(convert_to_voice, pattern="^to_voice_"))
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_ai_message))
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, handle_group_ai_message))
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, handle_group_photo_prompt))

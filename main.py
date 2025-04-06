@@ -48,7 +48,7 @@ application = None
 async def webhook(request: Request):
     global application
     update = await request.json()
-    update_obj = Update.de_json(update, application.bot)
+数が = Update.de_json(update, application.bot)
     update_id = update_obj.update_id
     logger.info(f"دریافت درخواست با update_id: {update_id}")
     with PROCESSING_LOCK:
@@ -229,7 +229,7 @@ async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     try:
-        response = requests.post(TEXT_API_URL, json=payload, timeout=10)
+        response = requests.post(TEXT_API_URL, json=payload, timeout=20)  # افزایش تایم‌اوت به 20 ثانیه
         if response.status_code == 200:
             ai_response = response.text.strip()
             chat_history.append({"role": "assistant", "content": ai_response})
@@ -237,10 +237,17 @@ async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(ai_response, reply_markup=reply_markup, parse_mode="HTML")
         else:
             await update.message.reply_text(
-                "اوفف، <b>یه مشکلی پیش اومد!</b> 😅 <i>فکر کنم API یه کم خوابش برده! بعداً امتحان کن</i> 🚀",
+                "اوفف، <b>یه مشکلی پیش اومد!</b> 😅 <i>API جواب نداد، بعداً امتحان کن</i> 🚀",
                 reply_markup=reply_markup,
                 parse_mode="HTML"
             )
+    except requests.exceptions.Timeout:
+        logger.error(f"تایم‌اوت در اتصال به API چت: {e}")
+        await update.message.reply_text(
+            "اییی، <b>API خیلی طول کشید جواب بده!</b> 😭 <i>یه کم صبر کن دوباره بگو</i> 🚀",
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
     except Exception as e:
         logger.error(f"خطا در اتصال به API چت: {e}")
         await update.message.reply_text(
@@ -330,7 +337,7 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
     }
     
     try:
-        response = requests.post(TEXT_API_URL, json=payload, timeout=10)
+        response = requests.post(TEXT_API_URL, json=payload, timeout=20)  # افزایش تایم‌اوت به 20 ثانیه
         if response.status_code == 200:
             ai_response = response.text.strip()
             user_history.append({"role": "assistant", "content": ai_response})
@@ -355,13 +362,22 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode="HTML"
             )
         else:
-            error_message = "اوفف، <b>یه مشکلی پیش اومد!</b> 😅 <i>بعداً امتحان کن</i> 🚀"
+            error_message = "اوفف، <b>یه مشکلی پیش اومد!</b> 😅 <i>API جواب نداد، بعداً امتحان کن</i> 🚀"
             await update.message.reply_text(
                 error_message,
                 reply_to_message_id=update.message.message_id,
                 message_thread_id=thread_id,
                 parse_mode="HTML"
             )
+    except requests.exceptions.Timeout as e:
+        logger.error(f"تایم‌اوت در اتصال به API چت گروه: {e}")
+        error_message = "اییی، <b>API خیلی طول کشید جواب بده!</b> 😭 <i>یه کم صبر کن دوباره بگو</i> 🚀"
+        await update.message.reply_text(
+            error_message,
+            reply_to_message_id=update.message.message_id,
+            message_thread_id=thread_id,
+            parse_mode="HTML"
+        )
     except Exception as e:
         logger.error(f"خطا در اتصال به API چت گروه: {e}")
         error_message = "اییی، <b>یه خطا خوردم!</b> 😭 <i>بعداً دوباره بیا</i> 🚀"

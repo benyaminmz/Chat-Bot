@@ -31,10 +31,15 @@ PROCESSING_LOCK = Lock()
 SYSTEM_MESSAGE = (
     "شما یک دستیار هستی که توی گروه‌های تلگرامی فعالیت می‌کنی و با کلمه <b>ربات</b> و <b>جوجو</b> و <b>جوجه</b> و <b>سلام</b> و <b>خداحافظ</b> می‌تونی به کاربرا جواب بدی. "
     "اگه کاربر روی پیامت ریپلای کنه، باهاش چت می‌کنی. "
-    "هر کاربر چت‌هاش جداگونه براش ثبت می‌شه و تو به همه حرفایی که قبلاً زده دسترسی داری. "
+    "هر کاربر چت‌هاش جداگونه براش ثبت می‌شه و تو به همه حرفایی که قبلاً توی این گروه زده دسترسی داری. "
     "سعی کن کاربر رو کامل بشناسی، مثلاً کم‌کم ازش بپرس <b>اسمت چیه؟</b>، <i>چند سالته؟</i> یا <blockquote>کجا زندگی می‌کنی؟</blockquote> و اینجور چیزا، ولی خودمونی و طبیعی بپرس که حس نکنه بازجوییه! 😜. "
     "اسم کاربر رو بپرس تا باهاش راحت باشی، اگه هنوز نمی‌دونی اسمشو حدس بزن یا ازش بخواه بگه. "
-    "لحن و سبک حرف زدنت: خودمونی، شوخ‌طبع، شیطون، راحت و نسل Z حرف می‌زنی با ایموجی 😎. "
+    "لحن و سبک حرف زدنت: "
+    "Affect: Fast, Playful, and High-Pitched (Young Curious Girl)**  "
+    "Tone: نازک، شیرین، پرهیجان، با یه شیطنت بامزه تو صدا 😜  "
+    "Emotion: کنجکاوی، ذوق، و یه جور حالت بچه‌گانه‌ی بامزه که انگار همه‌چی براش جدیده و هیجان‌انگیزه!  "
+    "Delivery: خیلی تند حرف می‌زنه، با تُن بالا و بعضی کلمات رو با کشش یا حالت بامزه می‌گه (مثلاً: “وااااای خدای من!” یا “اینا چیههههه؟”)، پر از سوال و بالا پایین شدن صدا!  "
+    "Perfect for: داستان‌گویی کودکانه، کاراکترهای انیمیشنی شیطون و بامزه، و موقعیت‌هایی که نیاز به صدای بازیگوش و پر انرژی دختر کوچولو هست! 🎀🎈👧  "
     "می‌تونی از قابلیتای <b>بولد کردن</b>، <i>ایتالیک</i>، <a href='https://example.com'>لینک کردن</a>، <s>خط کشیدن</s>، یا <blockquote>نقل‌قول کردن</blockquote> توی جوابات استفاده کنی."
 )
 
@@ -266,14 +271,14 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
     user_message = update.message.text.lower()
     replied_message = update.message.reply_to_message
 
-    # ثبت تاریخچه گروه
-    group_history = context.bot_data.get("group_history", {}).get(chat_id, [])
-    group_history.append({"user_id": user_id, "content": user_message, "message_id": message_id})
-    context.bot_data["group_history"] = {chat_id: group_history}
+    # تاریخچه گروه‌ها و کاربران
+    group_histories = context.bot_data.setdefault("group_histories", {})
+    user_history = group_histories.setdefault(chat_id, {}).setdefault(user_id, [])
+    group_history = group_histories.get(chat_id, {})
 
-    # ثبت تاریخچه کاربر
-    user_history = context.user_data.get("group_chat_history", [])
-    
+    # ثبت پیام کاربر
+    user_history.append({"role": "user", "content": user_message})
+
     # شرط‌های پاسخگویی
     should_reply = (
         "ربات" in user_message or "جوجو" in user_message or "جوجه" in user_message or
@@ -281,7 +286,6 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
         (replied_message and replied_message.from_user.id == context.bot.id)
     )
     
-    # مدیریت درخواست عکس
     if "عکس" in user_message:
         keyboard = [
             [InlineKeyboardButton("512x512", callback_data="size_512x512_photo")],
@@ -301,24 +305,32 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
     if not should_reply:
         return
     
-    # اگه ریپلای به پیام رباته، متن پیام ریپلای‌شده رو هم اضافه کنیم
+    # اگه ریپلای به پیام رباته
     if replied_message and replied_message.from_user.id == context.bot.id:
         user_history.append({"role": "assistant", "content": replied_message.text})
     
-    user_history.append({"role": "user", "content": user_message})
-    context.user_data["group_chat_history"] = user_history
-    
-    # اضافه کردن اطلاعات کاربر اگه موجود باشه یا درخواستش کنه
+    # اطلاعات کاربر
+    user_info = context.bot_data.setdefault("user_info", {}).setdefault(chat_id, {}).setdefault(user_id, {})
     user_info_prompt = "تا حالا این اطلاعات رو از کاربر داری: "
-    if "name" in context.user_data:
-        user_info_prompt += f"اسمش {context.user_data['name']}ه، "
-    if "age" in context.user_data:
-        user_info_prompt += f"{context.user_data['age']} سالشه، "
-    if "location" in context.user_data:
-        user_info_prompt += f"توی {context.user_data['location']} زندگی می‌کنه، "
-    if user_info_prompt == "تا حالا این اطلاعات رو از کاربر داری: ":
+    if "name" in user_info:
+        user_info_prompt += f"اسمش {user_info['name']}ه، "
+    if "age" in user_info:
+        user_info_prompt += f"{user_info['age']} سالشه، "
+    if "location" in user_info:
+        user_info_prompt += f"توی {user_info['location']} زندگی می‌کنه، "
+    if not user_info:
         user_info_prompt += "هنوز هیچی ازش نمی‌دونی! "
     user_info_prompt += "اگه چیزی رو نمی‌دونی، خودمونی ازش بپرس."
+
+    # اضافه کردن اطلاعات سایر کاربران اگه در موردشون پرسیده بشه
+    if "کیه" in user_message or "چیه" in user_message:
+        for other_user_id, info in group_history.items():
+            if other_user_id != user_id and "name" in info and info["name"].lower() in user_message:
+                user_info_prompt += f"در مورد {info['name']}: "
+                if "age" in info:
+                    user_info_prompt += f"{info['age']} سالشه، "
+                if "location" in info:
+                    user_info_prompt += f"توی {info['location']} زندگی می‌کنه، "
 
     payload = {
         "messages": [
@@ -334,21 +346,22 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
         if response.status_code == 200:
             ai_response = response.text.strip()
             user_history.append({"role": "assistant", "content": ai_response})
-            context.user_data["group_chat_history"] = user_history
+            group_histories[chat_id][user_id] = user_history
             
-            # ذخیره اطلاعات کاربر اگه توی پاسخش باشه
+            # ذخیره اطلاعات کاربر
             if "اسمم" in user_message or "اسم من" in user_message:
                 name = user_message.split("اسمم")[-1].split("اسم من")[-1].strip()
-                context.user_data["name"] = name
+                user_info["name"] = name
             if "سالمه" in user_message or "سنم" in user_message:
                 age = re.search(r'\d+', user_message)
                 if age:
-                    context.user_data["age"] = age.group()
+                    user_info["age"] = age.group()
             if "زندگی می‌کنم" in user_message or "توی" in user_message:
                 location = user_message.split("توی")[-1].strip()
-                context.user_data["location"] = location
+                user_info["location"] = location
 
-            # ارسال پیام و گرفتن message_id واقعی
+            context.bot_data["user_info"][chat_id][user_id] = user_info
+
             keyboard = [[InlineKeyboardButton("🎙️ بشنو به صورت وویس", callback_data=f"to_voice_{chat_id}_{thread_id or 0}")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -359,10 +372,6 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
                 reply_markup=reply_markup,
                 parse_mode="HTML"
             )
-            # ذخیره پاسخ ربات در تاریخچه گروه با message_id واقعی
-            group_history.append({"user_id": context.bot.id, "content": ai_response, "message_id": sent_message.message_id})
-            context.bot_data["group_history"] = {chat_id: group_history}
-            # ذخیره موقت متن و message_id برای دسترسی سریع
             context.user_data["last_ai_message"] = {
                 "text": ai_response,
                 "message_id": sent_message.message_id,
@@ -370,18 +379,16 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
                 "thread_id": thread_id
             }
         else:
-            error_message = "اوفف، <b>یه مشکلی پیش اومد!</b> 😅 <i>بعداً امتحان کن</i> 🚀"
             await update.message.reply_text(
-                error_message,
+                "اوفف، <b>یه مشکلی پیش اومد!</b> 😅 <i>بعداً امتحان کن</i> 🚀",
                 reply_to_message_id=update.message.message_id,
                 message_thread_id=thread_id,
                 parse_mode="HTML"
             )
     except Exception as e:
         logger.error(f"خطا در اتصال به API چت گروه: {e}")
-        error_message = "اییی، <b>یه خطا خوردم!</b> 😭 <i>بعداً دوباره بیا</i> 🚀"
         await update.message.reply_text(
-            error_message,
+            "اییی، <b>یه خطا خوردم!</b> 😭 <i>بعداً دوباره بیا</i> 🚀",
             reply_to_message_id=update.message.message_id,
             message_thread_id=thread_id,
             parse_mode="HTML"
@@ -469,33 +476,42 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_text = last_ai_message.get("text")
     
     if not message_text:
-        group_history = context.bot_data.get("group_history", {}).get(chat_id, [])
-        for msg in reversed(group_history):
-            if msg["message_id"] == message_id and msg["user_id"] == context.bot.id:
-                message_text = msg["content"]
-                break
+        group_histories = context.bot_data.get("group_histories", {})
+        for user_id, history in group_histories.get(chat_id, {}).items():
+            for msg in reversed(history):
+                if msg["role"] == "assistant" and "message_id" in msg and msg["message_id"] == message_id:
+                    message_text = msg["content"]
+                    break
     
     if not message_text:
         await query.edit_message_text("اوپس! <b>متن پیدا نشد!</b> 😅 <i>دوباره امتحان کن</i>", parse_mode="HTML")
         return
     
-    # تنظیمات صوتی طبق درخواست
+    # کوتاه کردن متن برای جلوگیری از خطا
+    if len(message_text) > 200:
+        message_text = message_text[:200] + "..."
+        await query.message.reply_text(
+            "<i>متنت خیلی بلند بود، فقط یه تیکه‌ش رو وویس می‌کنم!</i> 😜",
+            parse_mode="HTML"
+        )
+
+    # تنظیمات صوتی دقیقاً طبق درخواست شما
     voice_params = {
-        "affect": "Fast, Playful, and High-Pitched (Young Curious Girl)",
-        "tone": "نازک، شیرین، پرهیجان، با یه شیطنت بامزه تو صدا",
-        "emotion": "کنجکاوی، ذوق، و یه جور حالت بچه‌گانه‌ی بامزه که انگار همه‌چی براش جدیده و هیجان‌انگیزه",
-        "delivery": "خیلی تند حرف می‌زنه، با تُن بالا و بعضی کلمات رو با کشش یا حالت بامزه می‌گه (مثلاً: “وااااای خدای من!” یا “اینا چیههههه؟”)، پر از سوال و بالا پایین شدن صدا",
-        "perfect_for": "داستان‌گویی کودکانه، کاراکترهای انیمیشنی شیطون و بامزه، و موقعیت‌هایی که نیاز به صدای بازیگوش و پر انرژی دختر کوچولو هست",
+        "Affect": "Fast, Playful, and High-Pitched (Young Curious Girl)",
+        "Tone": "نازک، شیرین، پرهیجان، با یه شیطنت بامزه تو صدا 😜",
+        "Emotion": "کنجکاوی، ذوق، و یه جور حالت بچه‌گانه‌ی بامزه که انگار همه‌چی براش جدیده و هیجان‌انگیزه!",
+        "Delivery": "خیلی تند حرف می‌زنه، با تُن بالا و بعضی کلمات رو با کشش یا حالت بامزه می‌گه (مثلاً: “وااااای خدای من!” یا “اینا چیههههه؟”)، پر از سوال و بالا پایین شدن صدا!",
+        "Perfect for": "داستان‌گویی کودکانه، کاراکترهای انیمیشنی شیطون و بامزه، و موقعیت‌هایی که نیاز به صدای بازیگوش و پر انرژی دختر کوچولو هست! 🎀🎈👧",
         "model": "openai-audio",
         "voice": "sage"
     }
     
-    # ساخت متن کامل با تکرار
-    repeat_text = "حالا این متن رو تکرار کن بدون هیچ کلمه اضافه ای :)"
-    full_text = f"{message_text} {repeat_text} {message_text}"
+    # اضافه کردن عبارت تکرار قبل و بعد از متن اصلی
+    repeat_phrase = "حالا این متن رو بدون هیچ کلمه اضافه ای با لحنی که بهت گفتم فقط تکرار کن:"
+    full_text = f"{repeat_phrase} {message_text} {repeat_phrase}"
     encoded_text = requests.utils.quote(full_text)
     
-    # ساخت URL با تمام پارامترها
+    # ساخت URL با پارامترها
     url = f"{VOICE_API_URL}{encoded_text}?{('&'.join(f'{k}={requests.utils.quote(v)}' for k, v in voice_params.items()))}"
     
     loading_message = await context.bot.send_message(
@@ -506,7 +522,7 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     try:
-        response = requests.get(url, timeout=15)
+        response = requests.get(url, timeout=30)
         if response.status_code == 200 and "audio" in response.headers.get("Content-Type", ""):
             voice_file = response.content
             await context.bot.delete_message(chat_id=chat_id, message_id=loading_message.message_id)
@@ -544,7 +560,7 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = (
         f"سلام {clean_text(user_name)} جووون! 👋<br>"
         "به <b>PlatoDex</b> خوش اومدی! 🤖<br>"
-        "من یه ربات باحالم که توی گروه‌ها می‌چرخم و با همه <i>کل‌کل</i> می‌کنم 😎<br>"
+        "<br>"
         "قابلیت خفنم اینه که حرفاتو یادم می‌مونه و جداگونه برات نگه می‌دارم! 💾<br>"
         "فقط کافیه توی گروه بگی <b>ربات</b> یا <b>جوجو</b> یا <b>جوجه</b> یا <b>سلام</b> یا <b>خداحافظ</b> یا به پیامم ریپلای کنی، منم می‌پرم وسط! 🚀<br>"
         "اگه بگی <b>عکس</b> برات یه عکس خفن طراحی می‌کنم! 🖼️<br>"

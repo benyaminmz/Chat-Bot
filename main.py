@@ -487,15 +487,7 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("اوپس! <b>متن پیدا نشد!</b> 😅 <i>دوباره امتحان کن</i>", parse_mode="HTML")
         return
     
-    # کوتاه کردن متن برای جلوگیری از خطا
-    if len(message_text) > 200:
-        message_text = message_text[:200] + "..."
-        await query.message.reply_text(
-            "<i>متنت خیلی بلند بود، فقط یه تیکه‌ش رو وویس می‌کنم!</i> 😜",
-            parse_mode="HTML"
-        )
-
-    # تنظیمات صوتی دقیقاً طبق درخواست شما
+    # تنظیمات صوتی
     voice_params = {
         "Affect": "Fast, Playful, and High-Pitched (Young Curious Girl)",
         "Tone": "نازک، شیرین، پرهیجان، با یه شیطنت بامزه تو صدا 😜",
@@ -509,10 +501,12 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # اضافه کردن عبارت تکرار قبل و بعد از متن اصلی
     repeat_phrase = "حالا این متن رو بدون هیچ کلمه اضافه ای با لحنی که بهت گفتم فقط تکرار کن:"
     full_text = f"{repeat_phrase} {message_text} {repeat_phrase}"
-    encoded_text = requests.utils.quote(full_text)
     
-    # ساخت URL با پارامترها
-    url = f"{VOICE_API_URL}{encoded_text}?{('&'.join(f'{k}={requests.utils.quote(v)}' for k, v in voice_params.items()))}"
+    # استفاده از POST برای پشتیبانی از متن‌های بلند
+    payload = {
+        "text": full_text,
+        **voice_params
+    }
     
     loading_message = await context.bot.send_message(
         chat_id=chat_id,
@@ -522,7 +516,7 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     try:
-        response = requests.get(url, timeout=30)
+        response = requests.post(VOICE_API_URL, json=payload, timeout=60)
         if response.status_code == 200 and "audio" in response.headers.get("Content-Type", ""):
             voice_file = response.content
             await context.bot.delete_message(chat_id=chat_id, message_id=loading_message.message_id)
@@ -560,7 +554,7 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = (
         f"سلام {clean_text(user_name)} جووون! 👋<br>"
         "به <b>PlatoDex</b> خوش اومدی! 🤖<br>"
-        "<br>"
+        "من یه ربات باحالم که توی گروه‌ها می‌چرخم و با همه <i>کل‌کل</i> می‌کنم 😎<br>"
         "قابلیت خفنم اینه که حرفاتو یادم می‌مونه و جداگونه برات نگه می‌دارم! 💾<br>"
         "فقط کافیه توی گروه بگی <b>ربات</b> یا <b>جوجو</b> یا <b>جوجه</b> یا <b>سلام</b> یا <b>خداحافظ</b> یا به پیامم ریپلای کنی، منم می‌پرم وسط! 🚀<br>"
         "اگه بگی <b>عکس</b> برات یه عکس خفن طراحی می‌کنم! 🖼️<br>"

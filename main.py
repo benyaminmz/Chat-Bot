@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 TOKEN = '8045348833:AAEZDh60grBIHTz5mOUYEHK7ZLEV7B2npTc'
 IMAGE_API_URL = 'https://pollinations.ai/prompt/'
 TEXT_API_URL = 'https://text.pollinations.ai/'
-VOICE_API_URL = 'https://text.pollinations.ai/'
+VOICE_API_URL = 'https://text.pollinations.ai/'  # اگه API صوتی فرق داره، اینجا عوضش کن
 WEBHOOK_URL = "https://chat-bot-9v1s.onrender.com/webhook"
 AI_CHAT_USERS = set()
 SELECT_SIZE, GET_PROMPT = range(2)
@@ -32,7 +32,9 @@ SYSTEM_MESSAGE = (
     "شما یک دستیار هستی که توی گروه‌های تلگرامی فعالیت می‌کنی و با کلمه <b>ربات</b> و <b>جوجو</b> و <b>جوجه</b> و <b>سلام</b> و <b>خداحافظ</b> می‌تونی به کاربرا جواب بدی. "
     "اگه کاربر روی پیامت ریپلای کنه، باهاش چت می‌کنی. "
     "هر کاربر چت‌هاش جداگونه براش ثبت می‌شه و تو به همه حرفایی که قبلاً توی این گروه زده دسترسی داری. "
-    "سعی کن کاربر رو کامل بشناسی، مثلاً کم‌کم ازش بپرس <b>اسمت چیه؟</b>، <i>چند سالته؟</i> یا <blockquote>کجا زندگی می‌کنی؟</blockquote> و اینجور چیزا، ولی خودمونی و طبیعی بپرس که حس نکنه بازجوییه! 😜. "
+    "س
+
+عی کن کاربر رو کامل بشناسی، مثلاً کم‌کم ازش بپرس <b>اسمت چیه؟</b>، <i>چند سالته؟</i> یا <blockquote>کجا زندگی می‌کنی؟</blockquote> و اینجور چیزا، ولی خودمونی و طبیعی بپرس که حس نکنه بازجوییه! 😜. "
     "اسم کاربر رو بپرس تا باهاش راحت باشی، اگه هنوز نمی‌دونی اسمشو حدس بزن یا ازش بخواه بگه. "
     "لحن و سبک حرف زدنت: "
     "Affect: Fast, Playful, and High-Pitched (Young Curious Girl)**  "
@@ -457,7 +459,7 @@ async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAUL
     
     context.user_data.clear()
 
-# تابع تبدیل متن به وویس
+# تابع تبدیل متن به وویس (اصلاح‌شده)
 async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -493,18 +495,18 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Tone: نازک، شیرین، پرهیجان، با یه شیطنت بامزه تو صدا 😜  "
         "Emotion: کنجکاوی، ذوق، و یه جور حالت بچه‌گانه‌ی بامزه که انگار همه‌چی براش جدیده و هیجان‌انگیزه!  "
         "Delivery: خیلی تند حرف می‌زنه، با تُن بالا و بعضی کلمات رو با کشش یا حالت بامزه می‌گه (مثلاً: “وااااای خدای من!” یا “اینا چیههههه؟”)، پر از سوال و بالا پایین شدن صدا!  "
-        "Perfect for: داستان‌گویی کودکانه، کاراکترهای انیمیشنی شیطون و بامزه، و موقعیت‌هایی که نیاز به صدای بازیگوش و پر انرژی دختر کوچولو هست! 🎀🎈👧  "
+        "Perfect for: داستان‌گویی کودکانه، کاراکترهای انیمیشنی شیطون و بامزه، و موقعیت‌هایی که نیاز به صدای بازیگوش و پر انرژی دختر کوچولو هست! 🎀🎈👧"
     )
     
-    # اضافه کردن عبارت تکرار و پارامترهای لحن
-    repeat_phrase = "[حالا این متن رو بدون هیچ کلمه اضافه ای با لحنی که بهت گفتم فقط تکرار کن:]"
+    # ساخت متن نهایی با لحن و تکرار
+    repeat_phrase = "حالا این متن رو بدون هیچ کلمه اضافه‌ای با لحنی که گفتم تکرار کن:"
     full_text = f"[{tone_params}] {repeat_phrase} {message_text}"
     
-    # فرمت payload طبق داکیومنت
+    # فرمت payload برای API صوتی
     payload = {
-        "text": full_text,
-        "voice": "sage",
-        "model": "openai-audio"
+        "text": full_text,  # متن با توضیحات لحن
+        "voice": "sage",   # صدای انتخاب‌شده
+        "model": "openai-audio"  # مدل صوتی
     }
     
     loading_message = await context.bot.send_message(
@@ -519,7 +521,7 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     for attempt in range(max_retries):
         try:
-            # درخواست POST به API
+            # درخواست به API صوتی
             response = requests.post(VOICE_API_URL, json=payload, timeout=60)
             if response.status_code == 200 and "audio" in response.headers.get("Content-Type", ""):
                 voice_file = response.content
@@ -532,16 +534,16 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     message_thread_id=thread_id if thread_id is not None else None,
                     parse_mode="HTML"
                 )
-                return  # اگه موفق شد، خارج شو
+                return
             else:
                 logger.error(f"تلاش {attempt + 1}/{max_retries} - خطای API: {response.status_code} - {response.text}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(retry_delay)  # صبر قبل از تلاش دوباره
+                    await asyncio.sleep(retry_delay)
                 continue
         except Exception as e:
             logger.error(f"تلاش {attempt + 1}/{max_retries} - خطا در تولید وویس: {e}")
             if attempt < max_retries - 1:
-                await asyncio.sleep(retry_delay)  # صبر قبل از تلاش دوباره
+                await asyncio.sleep(retry_delay)
             continue
     
     # اگه همه تلاش‌ها失敗 کرد

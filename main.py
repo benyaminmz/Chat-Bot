@@ -17,10 +17,10 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # توکن و آدرس‌ها
-TOKEN = '8045348833:AAEZDh60grBIHTz5mOUYEHK7ZLEV7B2npTc'  # توکن ربات خودت
+TOKEN = '8045348833:AAEZDh60grBIHTz5mOUYEHK7ZLEV7B2npTc'
 IMAGE_API_URL = 'https://pollinations.ai/prompt/'
 TEXT_API_URL = 'https://text.pollinations.ai/'
-WEBHOOK_URL = "https://chat-bot-9v1s.onrender.com/webhook"  # آدرس ربات خودت
+WEBHOOK_URL = "https://chat-bot-9v1s.onrender.com/webhook"
 AI_CHAT_USERS = set()
 SELECT_SIZE, GET_PROMPT = range(2)
 DEFAULT_CHAT_ID = 789912945
@@ -33,11 +33,11 @@ SYSTEM_MESSAGE = (
     "این پیام آموزشی رو توی هر پاسخ تکرار نکن، فقط توی ذهنت نگه دار و بر اساسش عمل کن\\."
 )
 
-# مقداردهی اولیه application به صورت None
-application = None
-
 # تعریف اپلیکیشن FastAPI
 app = FastAPI()
+
+# مقداردهی اولیه application به صورت گلوبال
+application = None
 
 # تابع وب‌هوک
 @app.post("/webhook")
@@ -363,9 +363,12 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update and update.callback_query:
             await update.callback_query.message.reply_text(clean_text("اوپس، یه کم دیر شد! دوباره امتحان کن 😅"), parse_mode="MarkdownV2")
 
-# تابع اصلی
-async def main():
+# تابع مقداردهی اولیه application
+def initialize_application():
     global application
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
     max_retries = 3
     retry_delay = 5
     
@@ -375,7 +378,7 @@ async def main():
             application = Application.builder().token(TOKEN).read_timeout(60).write_timeout(60).connect_timeout(60).build()
             
             # تنظیم وب‌هوک
-            await application.bot.set_webhook(url=WEBHOOK_URL)
+            loop.run_until_complete(application.bot.set_webhook(url=WEBHOOK_URL))
             logger.info(f"Webhook روی {WEBHOOK_URL} تنظیم شد.")
             
             # تعریف Handlerها
@@ -406,25 +409,26 @@ async def main():
             application.add_error_handler(error_handler)
             
             logger.info("در حال آماده‌سازی ربات...")
-            await application.initialize()
+            loop.run_until_complete(application.initialize())
             logger.info("در حال شروع ربات...")
-            await application.start()
+            loop.run_until_complete(application.start())
             logger.info("ربات با موفقیت آماده شد!")
-            
-            # اجرای سرور Uvicorn
-            config = uvicorn.Config(app, host="0.0.0.0", port=8000)
-            server = uvicorn.Server(config)
-            await server.serve()
             break  # اگه موفق بود، از حلقه خارج شو
             
         except Exception as e:
             logger.error(f"خطا در تلاش {attempt + 1}/{max_retries}: {e}")
             if attempt < max_retries - 1:
                 logger.info(f"تلاش دوباره بعد از {retry_delay} ثانیه...")
-                await asyncio.sleep(retry_delay)
+                time.sleep(retry_delay)
             else:
                 logger.error("همه تلاش‌ها برای شروع ربات ناموفق بود!")
                 raise
+        finally:
+            loop.close()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # مقداردهی application قبل از اجرای سرور
+    initialize_application()
+    
+    # اجرای سرور Uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

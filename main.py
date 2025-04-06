@@ -38,6 +38,61 @@ application = Application.builder().token(TOKEN).read_timeout(60).write_timeout(
 
 app = FastAPI()
 
+# تابع برای آماده‌سازی application
+async def initialize_application():
+    global application
+    max_retries = 3
+    retry_delay = 5
+    
+    for attempt in range(max_retries):
+        try:
+            # تنظیم وب‌هوک
+            await application.bot.set_webhook(url=WEBHOOK_URL)
+            logger.info(f"Webhook روی {WEBHOOK_URL} تنظیم شد.")
+            
+            # تعریف Handlerها
+            image_conv_handler = ConversationHandler(
+                entry_points=[
+                    CallbackQueryHandler(start_generate_image, pattern="^generate_image$"),
+                    CallbackQueryHandler(retry_generate_image, pattern="^retry_generate_image$")
+                ],
+                states={
+                    SELECT_SIZE: [CallbackQueryHandler(select_size, pattern="^size_")],
+                    GET_PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_prompt)]
+                },
+                fallbacks=[
+                    CommandHandler("cancel", cancel),
+                    CommandHandler("start", start),
+                    CallbackQueryHandler(back_to_home, pattern="^back_to_home$")
+                ],
+                name="image_generation",
+                persistent=False
+            )
+            
+            application.add_handler(CommandHandler("start", start))
+            application.add_handler(image_conv_handler)
+            application.add_handler(CallbackQueryHandler(chat_with_ai, pattern="^chat_with_ai$"))
+            application.add_handler(CallbackQueryHandler(back_to_home, pattern="^back_to_home$"))
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_ai_message))
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, handle_group_ai_message))
+            application.add_error_handler(error_handler)
+            
+            logger.info("در حال آماده‌سازی ربات...")
+            await application.initialize()
+            logger.info("در حال شروع ربات...")
+            await application.start()
+            logger.info("ربات با موفقیت آماده شد!")
+            break  # اگه موفق بود، از حلقه خارج شو
+            
+        except Exception as e:
+            logger.error(f"خطا در تلاش {attempt + 1}/{max_retries}: {e}")
+            if attempt < max_retries - 1:
+                logger.info(f"تلاش دوباره بعد از {retry_delay} ثانیه...")
+                await asyncio.sleep(retry_delay)
+            else:
+                logger.error("همه تلاش‌ها برای آماده‌سازی ربات ناموفق بود!")
+                raise
+
 @app.post("/webhook")
 async def webhook(request: Request):
     global application
@@ -350,61 +405,13 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.message.reply_text(clean_text("اوپس، یه کم دیر شد! دوباره امتحان کن 😅"), parse_mode="MarkdownV2")
 
 async def main():
-    global application
-    max_retries = 3
-    retry_delay = 5
+    # آماده‌سازی application
+    await initialize_application()
     
-    for attempt in range(max_retries):
-        try:
-            # تنظیم وب‌هوک
-            await application.bot.set_webhook(url=WEBHOOK_URL)
-            logger.info(f"Webhook روی {WEBHOOK_URL} تنظیم شد.")
-            
-            # تعریف Handlerها
-            image_conv_handler = ConversationHandler(
-                entry_points=[
-                    CallbackQueryHandler(start_generate_image, pattern="^generate_image$"),
-                    CallbackQueryHandler(retry_generate_image, pattern="^retry_generate_image$")
-                ],
-                states={
-                    SELECT_SIZE: [CallbackQueryHandler(select_size, pattern="^size_")],
-                    GET_PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_prompt)]
-                },
-                fallbacks=[
-                    CommandHandler("cancel", cancel),
-                    CommandHandler("start", start),
-                    CallbackQueryHandler(back_to_home, pattern="^back_to_home$")
-                ],
-                name="image_generation",
-                persistent=False
-            )
-            
-            application.add_handler(CommandHandler("start", start))
-            application.add_handler(image_conv_handler)
-            application.add_handler(CallbackQueryHandler(chat_with_ai, pattern="^chat_with_ai$"))
-            application.add_handler(CallbackQueryHandler(back_to_home, pattern="^back_to_home$"))
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_ai_message))
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, handle_group_ai_message))
-            application.add_error_handler(error_handler)
-            
-            logger.info("در حال آماده‌سازی ربات...")
-            await application.initialize()
-            logger.info("در حال شروع ربات...")
-            await application.start()
-            
-            # اجرای سرور Uvicorn
-            config = uvicorn.Config(app, host="0.0.0.0", port=8000)
-            server = uvicorn.Server(config)
-            await server.serve()
-            
-        except Exception as e:
-            logger.error(f"خطا در تلاش {attempt + 1}/{max_retries}: {e}")
-            if attempt < max_retries - 1:
-                logger.info(f"تلاش دوباره بعد از {retry_delay} ثانیه...")
-                await asyncio.sleep(retry_delay)
-            else:
-                logger.error("همه تلاش‌ها برای شروع ربات ناموفق بود!")
-                raise
+    # اجرای سرور Uvicorn
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000)
+    server = uvicorn.Server(config)
+    await server.serve()
 
 if __name__ == "__main__":
     asyncio.run(main())

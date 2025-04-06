@@ -38,16 +38,18 @@ application = Application.builder().token(TOKEN).read_timeout(60).write_timeout(
 
 app = FastAPI()
 
-# تابع برای آماده‌سازی application
-async def initialize_application():
-    global application
+# تابع برای آماده‌سازی application (به صورت همگام)
+def initialize_application():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
     max_retries = 3
     retry_delay = 5
     
     for attempt in range(max_retries):
         try:
             # تنظیم وب‌هوک
-            await application.bot.set_webhook(url=WEBHOOK_URL)
+            loop.run_until_complete(application.bot.set_webhook(url=WEBHOOK_URL))
             logger.info(f"Webhook روی {WEBHOOK_URL} تنظیم شد.")
             
             # تعریف Handlerها
@@ -78,9 +80,9 @@ async def initialize_application():
             application.add_error_handler(error_handler)
             
             logger.info("در حال آماده‌سازی ربات...")
-            await application.initialize()
+            loop.run_until_complete(application.initialize())
             logger.info("در حال شروع ربات...")
-            await application.start()
+            loop.run_until_complete(application.start())
             logger.info("ربات با موفقیت آماده شد!")
             break  # اگه موفق بود، از حلقه خارج شو
             
@@ -88,10 +90,12 @@ async def initialize_application():
             logger.error(f"خطا در تلاش {attempt + 1}/{max_retries}: {e}")
             if attempt < max_retries - 1:
                 logger.info(f"تلاش دوباره بعد از {retry_delay} ثانیه...")
-                await asyncio.sleep(retry_delay)
+                time.sleep(retry_delay)
             else:
                 logger.error("همه تلاش‌ها برای آماده‌سازی ربات ناموفق بود!")
                 raise
+        finally:
+            loop.close()
 
 @app.post("/webhook")
 async def webhook(request: Request):
@@ -404,14 +408,9 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update and update.callback_query:
             await update.callback_query.message.reply_text(clean_text("اوپس، یه کم دیر شد! دوباره امتحان کن 😅"), parse_mode="MarkdownV2")
 
-async def main():
+if __name__ == "__main__":
     # آماده‌سازی application
-    await initialize_application()
+    initialize_application()
     
     # اجرای سرور Uvicorn
-    config = uvicorn.Config(app, host="0.0.0.0", port=8000)
-    server = uvicorn.Server(config)
-    await server.serve()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    uvicorn.run(app, host="0.0.0.0", port=8000)

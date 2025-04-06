@@ -28,9 +28,12 @@ PROCESSED_MESSAGES = set()
 PROCESSING_LOCK = Lock()
 
 SYSTEM_MESSAGE = (
-    "شما دستیار هوشمند PlatoDex هستید و به کاربران کمک میکنید و به صورت خودمونی جذاب و با ایموجی "
-    "حرف میزنی به صورت نسل z و کمی با طنز حرف بزن و شوخی کنه\\. به سوالات کاربر جواب بدی\\. "
-    "این پیام آموزشی رو توی هر پاسخ تکرار نکن، فقط توی ذهنت نگه دار و بر اساسش عمل کن\\."
+    "شما یک دستیار هستی که توی گروه‌های تلگرامی فعالیت می‌کنی و با کلمه *ربات* و *جوجو* می‌تونی به کاربرا جواب بدی\\. "
+    "اگه کاربر روی پیامت ریپلای کنه، باهاش چت می‌کنی\\. "
+    "هر کاربر چت‌هاش جداگونه براش ثبت می‌شه و تو به همه حرفایی که قبلاً زده دسترسی داری\\. "
+    "اسم کاربر رو بپرس تا باهاش راحت باشی\\. "
+    "لحن و سبک حرف زدنت: خودمونی، شوخ‌طبع، شیطون، راحت و نسل Z حرف می‌زنی با ایموجی 😜\\. "
+    "می‌تونی از قابلیتای بولد کردن \\*متن\\*، نقل‌قول > متن، یا خط تیره روی متن ~~متن~~ و اینجور چیزا استفاده کنی\\."
 )
 
 # تعریف اپلیکیشن FastAPI
@@ -75,11 +78,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     user_name = update.message.from_user.first_name
     welcome_message = clean_text(
-        f"سلام {user_name}!\nبه PlatoDex خوش اومدی - مرکز بازی‌های Plato!\n"
-        "• چت با هوش مصنوعی 🤖\n• تولید تصویر 🖼️"
+        f"سلام {user_name} جووون! 👋\nبه *PlatoDex* خوش اومدی! 🤖\n"
+        "من یه ربات باحالم که توی گروه‌ها می‌چرخم و با همه کل‌کل می‌کنم 😎\n"
+        "قابلیت خفنم اینه که حرفاتو یادم می‌مونه و جداگونه برات نگه می‌دارم! 💾\n"
+        "فقط کافیه توی گروه بگی *ربات* یا *جوجو* یا به پیامم ریپلای کنی، منم می‌پرم وسط! 🚀"
     )
     keyboard = [
-        [InlineKeyboardButton("Run App 📱", web_app={"url": "https://platodex-tde3qe.vercel.app/"})],
         [InlineKeyboardButton("Chat with AI 🤖", callback_data="chat_with_ai")],
         [InlineKeyboardButton("Generate Image 🖼️", callback_data="generate_image")]
     ]
@@ -149,7 +153,7 @@ async def get_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("↩️ برگشت", callback_data="retry_generate_image")],
                 [InlineKeyboardButton("🏠 Back to Home", callback_data="back_to_home")]
             ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            reply_markup = WInlineKeyboardMarkup(keyboard)
             await update.message.reply_photo(photo=response.content, reply_markup=reply_markup)
         else:
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
@@ -169,7 +173,7 @@ async def retry_generate_image(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("512x512", callback_data="size_512x512")],
         [InlineKeyboardButton("1024x1024", callback_data="size_1024x1024")],
         [InlineKeyboardButton("1280x720", callback_data="size_1280x720")],
-        [InlineKeyboardButton("🏠 Back to Home", callback_data="back_to_home")]
+        [InlineKeyboardButton("🏠 Back to Ascending Back to Home", callback_data="back_to_home")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
@@ -268,7 +272,7 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
     
     # شرط‌های پاسخگویی
     should_reply = (
-        "ربات" in user_message or "پلاتو" in user_message or
+        "ربات" in user_message or "جوجو" in user_message or
         (replied_message and replied_message.from_user.id == context.bot.id)
     )
     
@@ -331,11 +335,12 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     user_name = query.from_user.first_name
     welcome_message = clean_text(
-        f"سلام {user_name}!\nبه PlatoDex خوش اومدی - مرکز بازی‌های Plato!\n"
-        "• چت با هوش مصنوعی 🤖\n• تولید تصویر 🖼️"
+        f"سلام {user_name} جووون! 👋\nبه *PlatoDex* خوش اومدی! 🤖\n"
+        "من یه ربات باحالم که توی گروه‌ها می‌چرخم و با همه کل‌کل می‌کنم 😎\n"
+        "قابلیت خفنم اینه که حرفاتو یادم می‌مونه و جداگونه برات نگه می‌دارم! 💾\n"
+        "فقط کافیه توی گروه بگی *ربات* یا *جوجو* یا به پیامم ریپلای کنی، منم می‌پرم وسط! 🚀"
     )
     keyboard = [
-        [InlineKeyboardButton("Run App 📱", web_app={"url": "https://platodex-tde3qe.vercel.app/"})],
         [InlineKeyboardButton("Chat with AI 🤖", callback_data="chat_with_ai")],
         [InlineKeyboardButton("Generate Image 🖼️", callback_data="generate_image")]
     ]

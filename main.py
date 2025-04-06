@@ -514,34 +514,42 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
     
-    try:
-        # درخواست POST به API
-        response = requests.post(VOICE_API_URL, json=payload, timeout=60)
-        if response.status_code == 200 and "audio" in response.headers.get("Content-Type", ""):
-            voice_file = response.content
-            await context.bot.delete_message(chat_id=chat_id, message_id=loading_message.message_id)
-            await context.bot.send_voice(
-                chat_id=chat_id,
-                voice=voice_file,
-                caption=f"<i>وویس از متن: {clean_text(message_text[:50])}...</i>",
-                reply_to_message_id=message_id,
-                message_thread_id=thread_id if thread_id is not None else None,
-                parse_mode="HTML"
-            )
-        else:
-            await context.bot.delete_message(chat_id=chat_id, message_id=loading_message.message_id)
-            await query.edit_message_text(
-                f"اوفف، <b>یه مشکلی پیش اومد!</b> 😅 <i>وضعیت: {response.status_code}</i> 🚀",
-                parse_mode="HTML"
-            )
-            logger.error(f"خطای API: {response.text}")
-    except Exception as e:
-        await context.bot.delete_message(chat_id=chat_id, message_id=loading_message.message_id)
-        await query.edit_message_text(
-            "اییی، <b>خطا خوردم!</b> 😭 <i>بعداً دوباره بیا</i> 🚀",
-            parse_mode="HTML"
-        )
-        logger.error(f"خطا در تولید وویس: {e}")
+    max_retries = 3
+    retry_delay = 5  # ثانیه
+    
+    for attempt in range(max_retries):
+        try:
+            # درخواست POST به API
+            response = requests.post(VOICE_API_URL, json=payload, timeout=60)
+            if response.status_code == 200 and "audio" in response.headers.get("Content-Type", ""):
+                voice_file = response.content
+                await context.bot.delete_message(chat_id=chat_id, message_id=loading_message.message_id)
+                await context.bot.send_voice(
+                    chat_id=chat_id,
+                    voice=voice_file,
+                    caption=f"<i>وویس از متن: {clean_text(message_text[:50])}...</i>",
+                    reply_to_message_id=message_id,
+                    message_thread_id=thread_id if thread_id is not None else None,
+                    parse_mode="HTML"
+                )
+                return  # اگه موفق شد، خارج شو
+            else:
+                logger.error(f"تلاش {attempt + 1}/{max_retries} - خطای API: {response.status_code} - {response.text}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)  # صبر قبل از تلاش دوباره
+                continue
+        except Exception as e:
+            logger.error(f"تلاش {attempt + 1}/{max_retries} - خطا در تولید وویس: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)  # صبر قبل از تلاش دوباره
+            continue
+    
+    # اگه همه تلاش‌ها失敗 کرد
+    await context.bot.delete_message(chat_id=chat_id, message_id=loading_message.message_id)
+    await query.edit_message_text(
+        "اوووف، <b>نتونستم وویس رو درست کنم!</b> 😭 <i>فکر کنم سرور یه کم قاطی کرده، بعداً دوباره امتحان کن!</i> 🚀",
+        parse_mode="HTML"
+    )
 
 # تابع بازگشت به منوی اصلی
 async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):

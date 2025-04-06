@@ -255,7 +255,7 @@ async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_id = update.message.message_id
     with PROCESSING_LOCK:
-        if message_id in PROCESSED  PROCESSED_MESSAGES:
+        if message_id in PROCESSED_MESSAGES:  # خط اصلاح‌شده
             logger.warning(f"پیام تکراری در گروه با message_id: {message_id} - نادیده گرفته شد")
             return
         PROCESSED_MESSAGES.add(message_id)

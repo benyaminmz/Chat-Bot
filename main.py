@@ -97,7 +97,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     return ConversationHandler.END
 
-# تابع شروع تولید تصویر
+# تابع شروع تولید تصویر (در چت خصوصی)
 async def start_generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -116,7 +116,7 @@ async def start_generate_image(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     return SELECT_SIZE
 
-# تابع انتخاب سایز تصویر
+# تابع انتخاب سایز تصویر (در چت خصوصی)
 async def select_size(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -139,7 +139,7 @@ async def select_size(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return GET_PROMPT
 
-# تابع دریافت پرامپت و تولید تصویر
+# تابع دریافت پرامپت و تولید تصویر (در چت خصوصی)
 async def get_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = update.message.text.strip()
     if not prompt:
@@ -172,7 +172,7 @@ async def get_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return ConversationHandler.END
 
-# تابع بازتولید تصویر
+# تابع بازتولید تصویر (در چت خصوصی)
 async def retry_generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -407,6 +407,7 @@ async def select_size_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
     context.user_data["state"] = "awaiting_prompt"
+    context.user_data["size_selection_message_id"] = query.message.message_id  # ذخیره آیدی پیام انتخاب سایز
     return
 
 # تابع دریافت پرامپت در گروه و تولید عکس
@@ -415,7 +416,8 @@ async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAUL
         return
     
     replied_message = update.message.reply_to_message
-    if not (replied_message and replied_message.from_user.id == context.bot.id and context.user_data.get("state") == "awaiting_prompt"):
+    if not (replied_message and replied_message.from_user.id == context.bot.id and 
+            replied_message.message_id == context.user_data.get("size_selection_message_id")):
         return
     
     prompt = update.message.text.strip()
@@ -438,7 +440,7 @@ async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAUL
             await update.message.reply_photo(
                 photo=response.content,
                 caption=caption,
-                reply_to_message_id=original_message_id,
+                reply_to_message_id=original_message_id,  # ریپلای به پیام اصلی کاربر که "عکس" گفته
                 parse_mode="HTML"
             )
         else:

@@ -153,7 +153,7 @@ async def get_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("↩️ برگشت", callback_data="retry_generate_image")],
                 [InlineKeyboardButton("🏠 Back to Home", callback_data="back_to_home")]
             ]
-            reply_markup = WInlineKeyboardMarkup(keyboard)
+            reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_photo(photo=response.content, reply_markup=reply_markup)
         else:
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
@@ -173,7 +173,7 @@ async def retry_generate_image(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("512x512", callback_data="size_512x512")],
         [InlineKeyboardButton("1024x1024", callback_data="size_1024x1024")],
         [InlineKeyboardButton("1280x720", callback_data="size_1280x720")],
-        [InlineKeyboardButton("🏠 Back to Ascending Back to Home", callback_data="back_to_home")]
+        [InlineKeyboardButton("🏠 Back to Home", callback_data="back_to_home")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
@@ -369,11 +369,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.message.reply_text(clean_text("اوپس، یه کم دیر شد! دوباره امتحان کن 😅"), parse_mode="MarkdownV2")
 
 # تابع مقداردهی اولیه application
-def initialize_application():
+async def initialize_application():
     global application
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
     max_retries = 3
     retry_delay = 5
     
@@ -383,7 +380,7 @@ def initialize_application():
             application = Application.builder().token(TOKEN).read_timeout(60).write_timeout(60).connect_timeout(60).build()
             
             # تنظیم وب‌هوک
-            loop.run_until_complete(application.bot.set_webhook(url=WEBHOOK_URL))
+            await application.bot.set_webhook(url=WEBHOOK_URL)
             logger.info(f"Webhook روی {WEBHOOK_URL} تنظیم شد.")
             
             # تعریف Handlerها
@@ -414,9 +411,9 @@ def initialize_application():
             application.add_error_handler(error_handler)
             
             logger.info("در حال آماده‌سازی ربات...")
-            loop.run_until_complete(application.initialize())
+            await application.initialize()
             logger.info("در حال شروع ربات...")
-            loop.run_until_complete(application.start())
+            await application.start()
             logger.info("ربات با موفقیت آماده شد!")
             break  # اگه موفق بود، از حلقه خارج شو
             
@@ -424,16 +421,15 @@ def initialize_application():
             logger.error(f"خطا در تلاش {attempt + 1}/{max_retries}: {e}")
             if attempt < max_retries - 1:
                 logger.info(f"تلاش دوباره بعد از {retry_delay} ثانیه...")
-                time.sleep(retry_delay)
+                await asyncio.sleep(retry_delay)
             else:
                 logger.error("همه تلاش‌ها برای شروع ربات ناموفق بود!")
                 raise
-        finally:
-            loop.close()
 
+# اجرای اولیه و سرور
 if __name__ == "__main__":
-    # مقداردهی application قبل از اجرای سرور
-    initialize_application()
+    # اجرای اولیه application
+    asyncio.run(initialize_application())
     
     # اجرای سرور Uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

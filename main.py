@@ -43,20 +43,26 @@ app = FastAPI()
 # مقداردهی اولیه application به صورت گلوبال
 application = None
 
+# تابع تبدیل Markdown به HTML (فقط لینک‌ها)
+def convert_markdown_to_html(text):
+    # تبدیل [متن](لینک) به <a href="لینک">متن</a>
+    pattern = r'\[(.*?)\]\((.*?)\)'
+    return re.sub(pattern, r'<a href="\2">\1</a>', text)
+
 # تابع وب‌هوک
 @app.post("/webhook")
 async def webhook(request: Request):
     global application
     update = await request.json()
     update_obj = Update.de_json(update, application.bot)
-    update_id = update_obj.update_id  # اصلاح تورفتگی
+    update_id = update_obj.update_id
     logger.info(f"دریافت درخواست با update_id: {update_id}")
     with PROCESSING_LOCK:
         if update_id in PROCESSED_MESSAGES:
             logger.warning(f"درخواست تکراری با update_id: {update_id} - نادیده گرفته شد")
             return {"status": "ok"}
         PROCESSED_MESSAGES.add(update_id)
-    asyncio.create_task(application.process_update(update_obj))
+    await application.process_update(update_obj)  # تغییر به await مستقیم
     return {"status": "ok"}
 
 @app.get("/")
@@ -67,7 +73,6 @@ async def root():
 def clean_text(text):
     if not text:
         return ""
-    # فرمت کردن کاراکترهای خاص HTML
     return html.escape(text)
 
 # تابع دستور /start
@@ -229,9 +234,9 @@ async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     try:
-        response = requests.post(TEXT_API_URL, json=payload, timeout=20)  # افزایش تایم‌اوت به 20 ثانیه
+        response = requests.post(TEXT_API_URL, json=payload, timeout=20)
         if response.status_code == 200:
-            ai_response = response.text.strip()
+            ai_response = convert_markdown_to_html(response.text.strip())  # تبدیل Markdown به HTML
             chat_history.append({"role": "assistant", "content": ai_response})
             context.user_data["chat_history"] = chat_history
             await update.message.reply_text(ai_response, reply_markup=reply_markup, parse_mode="HTML")
@@ -296,7 +301,7 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
             [InlineKeyboardButton("1280x720", callback_data="size_1280x720_photo")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        context.user_data["photo_request_message_id"] = update.message.message_id  # ذخیره آیدی پیام برای ریپلای
+        context.user_data["photo_request_message_id"] = update.message.message_id
         await update.message.reply_text(
             "<b>می‌تونم برات طراحی کنم!</b> 🎨<br><i>سایز عکس رو انتخاب کن:</i>",
             reply_to_message_id=update.message.message_id,
@@ -308,14 +313,12 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
     if not should_reply:
         return
     
-    # اگه ریپلای به پیام رباته، متن پیام ریپلای‌شده رو هم اضافه کنیم
     if replied_message and replied_message.from_user.id == context.bot.id:
         user_history.append({"role": "assistant", "content": replied_message.text})
     
     user_history.append({"role": "user", "content": user_message})
     context.user_data["group_chat_history"] = user_history
     
-    # اضافه کردن اطلاعات کاربر اگه موجود باشه یا درخواستش کنه
     user_info_prompt = "تا حالا این اطلاعات رو از کاربر داری: "
     if "name" in context.user_data:
         user_info_prompt += f"اسمش {context.user_data['name']}ه، "
@@ -337,13 +340,12 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
     }
     
     try:
-        response = requests.post(TEXT_API_URL, json=payload, timeout=20)  # افزایش تایم‌اوت به 20 ثانیه
+        response = requests.post(TEXT_API_URL, json=payload, timeout=20)
         if response.status_code == 200:
-            ai_response = response.text.strip()
+            ai_response = convert_markdown_to_html(response.text.strip())  # تبدیل Markdown به HTML
             user_history.append({"role": "assistant", "content": ai_response})
             context.user_data["group_chat_history"] = user_history
             
-            # ذخیره اطلاعات کاربر اگه توی پاسخش باشه
             if "اسمم" in user_message or "اسم من" in user_message:
                 name = user_message.split("اسمم")[-1].split("اسم من")[-1].strip()
                 context.user_data["name"] = name
@@ -415,7 +417,6 @@ async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAUL
         return
     
     replied_message = update.message.reply_to_message
-    # چک کردن اینکه آیا پیام ریپلای به پیام رباته و در حالت انتظار پرامپت هستیم
     if not (replied_message and replied_message.from_user.id == context.bot.id and context.user_data.get("state") == "awaiting_prompt"):
         return
     
@@ -426,7 +427,7 @@ async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAUL
     
     width = context.user_data["width"]
     height = context.user_data["height"]
-    original_message_id = context.user_data.get("photo_request_message_id")  # گرفتن آیدی پیام اصلی
+    original_message_id = context.user_data.get("photo_request_message_id")
     
     loading_message = await update.message.reply_text("<b>🖌️ در حال طراحی عکس... صبر کن!</b>", parse_mode="HTML")
     
@@ -439,7 +440,7 @@ async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAUL
             await update.message.reply_photo(
                 photo=response.content,
                 caption=caption,
-                reply_to_message_id=original_message_id,  # ریپلای به پیام اصلی کاربر
+                reply_to_message_id=original_message_id,
                 parse_mode="HTML"
             )
         else:
@@ -450,7 +451,7 @@ async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAUL
         await update.message.reply_text("اییی، <b>خطا خوردم!</b> 😭 <i>بعداً دوباره بیا</i> 🚀", parse_mode="HTML")
         logger.error(f"خطا در تولید تصویر گروه: {e}")
     
-    context.user_data.clear()  # ریست کردن حالت بعد از تولید عکس
+    context.user_data.clear()
 
 # تابع بازگشت به منوی اصلی
 async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -506,14 +507,10 @@ async def initialize_application():
     
     for attempt in range(max_retries):
         try:
-            # مقداردهی application
             application = Application.builder().token(TOKEN).read_timeout(60).write_timeout(60).connect_timeout(60).build()
-            
-            # تنظیم وب‌هوک
             await application.bot.set_webhook(url=WEBHOOK_URL)
             logger.info(f"Webhook روی {WEBHOOK_URL} تنظیم شد.")
             
-            # تعریف Handlerها
             image_conv_handler = ConversationHandler(
                 entry_points=[
                     CallbackQueryHandler(start_generate_image, pattern="^generate_image$"),
@@ -547,8 +544,7 @@ async def initialize_application():
             logger.info("در حال شروع ربات...")
             await application.start()
             logger.info("ربات با موفقیت آماده شد!")
-            break  # اگه موفق بود، از حلقه خارج شو
-            
+            break
         except Exception as e:
             logger.error(f"خطا در تلاش {attempt + 1}/{max_retries}: {e}")
             if attempt < max_retries - 1:
@@ -558,10 +554,10 @@ async def initialize_application():
                 logger.error("همه تلاش‌ها برای شروع ربات ناموفق بود!")
                 raise
 
-# اجرای اولیه و سرور
-if __name__ == "__main__":
-    # اجرای اولیه application
+# تابع اصلی برای اجرا
+def main():
     asyncio.run(initialize_application())
-    
-    # اجرای سرور Uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, loop="asyncio")
+
+if __name__ == "__main__":
+    main()

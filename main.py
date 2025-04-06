@@ -255,7 +255,7 @@ async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_id = update.message.message_id
     with PROCESSING_LOCK:
-        if message_id in PROCESSED_MESSAGES:  # خط اصلاح‌شده
+        if message_id in PROCESSED_MESSAGES:
             logger.warning(f"پیام تکراری در گروه با message_id: {message_id} - نادیده گرفته شد")
             return
         PROCESSED_MESSAGES.add(message_id)
@@ -459,18 +459,16 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thread_id = query.message.message_thread_id if hasattr(query.message, 'message_thread_id') else None
     message_id = query.message.message_id  # message_id پیام ربات که دکمه روش زده شده
     
-    # گرفتن اطلاعات آخرین پیام از context.user_data
+    # گرفتن متن آخرین پیام ربات
     last_ai_message = context.user_data.get("last_ai_message", {})
     message_text = None
     
-    # چک کردن اینکه پیام کلیک‌شده همون آخرین پیام رباته
     if (last_ai_message.get("message_id") == message_id and 
         last_ai_message.get("chat_id") == chat_id and 
         last_ai_message.get("thread_id") == thread_id):
         message_text = last_ai_message.get("text")
     
     if not message_text:
-        # اگه توی context پیدا نشد، از تاریخچه گروه بگیریم
         group_history = context.bot_data.get("group_history", {}).get(chat_id, [])
         for msg in reversed(group_history):
             if msg["message_id"] == message_id and msg["user_id"] == context.bot.id:
@@ -481,16 +479,13 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("اوپس! <b>متن پیدا نشد!</b> 😅 <i>دوباره امتحان کن</i>", parse_mode="HTML")
         return
     
-    # تنظیمات صوتی
+    # تنظیمات صوتی بر اساس داکیومنت Pollinations
+    encoded_text = requests.utils.quote(message_text)  # URL-encode کردن متن
     voice_params = {
-        "text": message_text,
         "model": "openai-audio",
-        "voice": "sage",
-        "affect": "Fast, Playful, and High-Pitched",
-        "tone": "نازک، شیرین، پرهیجان، با یه شیطنت بامزه",
-        "emotion": "کنجکاوی، ذوق، و یه جور حالت بچه‌گانه‌ی بامزه",
-        "delivery": "خیلی تند، با تُن بالا و بعضی کلمات کشیده یا بامزه"
+        "voice": "sage"  # صدای مورد نظرت
     }
+    url = f"{VOICE_API_URL}{encoded_text}?{('&'.join(f'{k}={v}' for k, v in voice_params.items()))}"
     
     loading_message = await context.bot.send_message(
         chat_id=chat_id,
@@ -500,22 +495,22 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     try:
-        response = requests.post(VOICE_API_URL, json=voice_params, timeout=15)
-        if response.status_code == 200:
-            voice_file = response.content
+        response = requests.get(url, timeout=15)  # درخواست GET به API
+        if response.status_code == 200 and "audio" in response.headers.get("Content-Type", ""):
+            voice_file = response.content  # گرفتن فایل صوتی
             await context.bot.delete_message(chat_id=chat_id, message_id=loading_message.message_id)
             await context.bot.send_voice(
                 chat_id=chat_id,
-                voice=voice_file,
+                voice=voice_file,  # ارسال به صورت وویس
                 caption=f"<i>وویس از متن: {clean_text(message_text[:50])}...</i>",
-                reply_to_message_id=message_id,  # ریپلای به پیام اصلی ربات
+                reply_to_message_id=message_id,
                 message_thread_id=thread_id,
                 parse_mode="HTML"
             )
         else:
             await context.bot.delete_message(chat_id=chat_id, message_id=loading_message.message_id)
             await query.edit_message_text(
-                "اوفف، <b>یه مشکلی پیش اومد!</b> 😅 <i>دوباره امتحان کن</i> 🚀",
+                f"اوفف، <b>یه مشکلی پیش اومد!</b> 😅 <i>وضعیت: {response.status_code}</i> 🚀",
                 parse_mode="HTML"
             )
     except Exception as e:

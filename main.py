@@ -48,8 +48,8 @@ application = None
 async def webhook(request: Request):
     global application
     update = await request.json()
-数が = Update.de_json(update, application.bot)
-    update_id = update_obj.update_id
+    update_obj = Update.de_json(update, application.bot)
+    update_id = update_obj.update_id  # اصلاح تورفتگی
     logger.info(f"دریافت درخواست با update_id: {update_id}")
     with PROCESSING_LOCK:
         if update_id in PROCESSED_MESSAGES:
@@ -241,7 +241,7 @@ async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=reply_markup,
                 parse_mode="HTML"
             )
-    except requests.exceptions.Timeout:
+    except requests.exceptions.Timeout as e:
         logger.error(f"تایم‌اوت در اتصال به API چت: {e}")
         await update.message.reply_text(
             "اییی، <b>API خیلی طول کشید جواب بده!</b> 😭 <i>یه کم صبر کن دوباره بگو</i> 🚀",

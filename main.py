@@ -67,8 +67,6 @@ async def root():
 def clean_text(text):
     if not text:
         return ""
-    # فقط کاراکترهایی که نباید توی Markdown تفسیر بشن رو فرمت می‌کنیم
-    # اینطوری *، _ و غیره برای فرمت نگه داشته می‌شن
     reserved_chars = r"([[\]()~`>#+-=|{}.!])"
     return re.sub(reserved_chars, r"\\\1", text)
 
@@ -256,7 +254,7 @@ async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # تابع مدیریت پیام‌های گروه
 async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_id = update.message.message_id
-    with PROCESSING_LOCK historic:
+    with PROCESSING_LOCK:  # اصلاح خطا: حذف کلمه اضافی historic
         if message_id in PROCESSED_MESSAGES:
             logger.warning(f"پیام تکراری در گروه با message_id: {message_id} - نادیده گرفته شد")
             return
@@ -388,7 +386,7 @@ async def select_size_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["width"] = 1280
         context.user_data["height"] = 720
     await query.edit_message_text(
-        f"*سایز {context.user_data['width']}x{context.user_data['height']} انتخاب شد!*\n_عکس چی می‌خوای؟ یه پرامپت بگو 😎_",
+        f"*سایز {context.user_data['width']}x{context.user_data['height']} انتخاب شد!*\n_عکس چی می‌خوای؟ یه پرامپت بگو یا به این پیام ریپلای کن 😎_",
         parse_mode="MarkdownV2"
     )
     context.user_data["state"] = "awaiting_prompt"
@@ -396,18 +394,27 @@ async def select_size_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # تابع دریافت پرامپت در گروه و تولید عکس
 async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("state") != "awaiting_prompt":
+    # اگه توی حالت انتظار پرامپت نیستیم، چیزی نکن
+    if "state" not in context.user_data or context.user_data["state"] != "awaiting_prompt":
         return
     
-    prompt = update.message.text.strip()
+    user_message = update.message
+    replied_message = user_message.reply_to_message
+    
+    # چک کن اگه پیام ریپلای به رباته و توی حالت انتظار پرامپت هستیم
+    if replied_message and replied_message.from_user.id == context.bot.id and "عکس چی می‌خوای؟" in replied_message.text:
+        prompt = user_message.text.strip()
+    else:
+        prompt = user_message.text.strip() if not replied_message else None
+    
     if not prompt:
-        await update.message.reply_text("_لطفاً بگو عکس چی می‌خوای! یه پرامپت بده 😜_", parse_mode="MarkdownV2")
+        await user_message.reply_text("_لطفاً بگو عکس چی می‌خوای! یه پرامپت بده 😜_", parse_mode="MarkdownV2")
         return
     
     width = context.user_data["width"]
     height = context.user_data["height"]
     
-    loading_message = await update.message.reply_text("*🖌️ در حال طراحی عکس... صبر کن!*", parse_mode="MarkdownV2")
+    loading_message = await user_message.reply_text("*🖌️ در حال طراحی عکس... صبر کن!*", parse_mode="MarkdownV2")
     
     api_url = f"{IMAGE_API_URL}{prompt}?width={width}&height={height}&nologo=true"
     try:
@@ -415,18 +422,18 @@ async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAUL
         if response.status_code == 200:
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
             caption = f"*🖼 پرامپ شما:* {clean_text(prompt)}\n_طراحی شده با جوجو 😌_"
-            await update.message.reply_photo(
+            await user_message.reply_photo(
                 photo=response.content,
                 caption=caption,
-                reply_to_message_id=update.message.message_id,
+                reply_to_message_id=user_message.message_id,
                 parse_mode="MarkdownV2"
             )
         else:
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
-            await update.message.reply_text("اوفف، *یه مشکلی پیش اومد!* 😅 _دوباره امتحان کن_ 🚀", parse_mode="MarkdownV2")
+            await user_message.reply_text("اوفف، *یه مشکلی پیش اومد!* 😅 _دوباره امتحان کن_ 🚀", parse_mode="MarkdownV2")
     except Exception as e:
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
-        await update.message.reply_text("اییی، *خطا خوردم!* 😭 _بعداً دوباره بیا_ 🚀", parse_mode="MarkdownV2")
+        await user_message.reply_text("اییی، *خطا خوردم!* 😭 _بعداً دوباره بیا_ 🚀", parse_mode="MarkdownV2")
         logger.error(f"خطا در تولید تصویر گروه: {e}")
     
     context.user_data.clear()  # ریست کردن حالت بعد از تولید عکس

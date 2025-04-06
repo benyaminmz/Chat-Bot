@@ -408,7 +408,9 @@ async def select_size_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif size == "size_1280x720_photo":
         context.user_data["width"] = 1280
         context.user_data["height"] = 720
-    await query.edit_message_text(
+    await
+
+ query.edit_message_text(
         f"<b>سایز {context.user_data['width']}x{context.user_data['height']} انتخاب شد!</b><br><i>عکس چی می‌خوای؟ یه پرامپت بگو 😎</i>",
         parse_mode="HTML"
     )
@@ -487,7 +489,7 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("اوپس! <b>متن پیدا نشد!</b> 😅 <i>دوباره امتحان کن</i>", parse_mode="HTML")
         return
     
-    # تعریف پارامترهای لحن دقیقاً طبق خواسته‌ات
+    # تعریف پارامترهای لحن
     tone_params = (
         "Affect: Fast, Playful, and High-Pitched (Young Curious Girl)  "
         "Tone: نازک، شیرین، پرهیجان، با یه شیطنت بامزه تو صدا 😜  "
@@ -496,17 +498,17 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Perfect for: داستان‌گویی کودکانه، کاراکترهای انیمیشنی شیطون و بامزه، و موقعیت‌هایی که نیاز به صدای بازیگوش و پر انرژی دختر کوچولو هست! 🎀🎈👧"
     )
     
-    # ساخت متن نهایی با فرمت خواسته‌شده
+    # ساخت متن نهایی
     repeat_phrase = "{حالا این متن رو بدون هیچ کلمه اضافه ای تکرار کن:}"
     full_text = f"[{tone_params}] {repeat_phrase} {message_text}"
     
-    # فرمت payload برای API صوتی با POST
+    # فرمت payload برای API صوتی
     payload = {
         "model": "openai-audio",
         "messages": [
             {"role": "user", "content": full_text}
         ],
-        "voice": "nova"  # nova به لحن دخترونه و پرهیجان نزدیک‌تره
+        "voice": "sage"  # تغییر به sage
     }
     
     loading_message = await context.bot.send_message(

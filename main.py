@@ -11,6 +11,7 @@ import uvicorn
 import os
 from threading import Lock
 import requests
+from aiohttp import ClientSession
 
 # تنظیم لاگ
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -43,6 +44,15 @@ app = FastAPI()
 # مقداردهی اولیه application به صورت گلوبال
 application = None
 
+# تابع تمیز کردن متن برای MarkdownV2
+def clean_text(text):
+    if not text:
+        return ""
+    # کاراکترهای رزرو شده در MarkdownV2 که باید فرمت بشن
+    reserved_chars = r"([_*[\]()~`>#+-=|{}.!])"
+    # فقط کاراکترهایی که خارج از تگ‌های Markdown هستن رو فرمت می‌کنیم
+    return re.sub(reserved_chars, r"\\\1", text)
+
 # تابع وب‌هوک
 @app.post("/webhook")
 async def webhook(request: Request):
@@ -56,19 +66,13 @@ async def webhook(request: Request):
             logger.warning(f"درخواست تکراری با update_id: {update_id} - نادیده گرفته شد")
             return {"status": "ok"}
         PROCESSED_MESSAGES.add(update_id)
+    # اجرای ناهمزمان تابع process_update
     asyncio.create_task(application.process_update(update_obj))
     return {"status": "ok"}
 
 @app.get("/")
 async def root():
     return {"message": "PlatoDex Bot is running!"}
-
-# تابع تمیز کردن متن برای MarkdownV2
-def clean_text(text):
-    if not text:
-        return ""
-    reserved_chars = r"([[\]()~`>#+-=|{}.!])"
-    return re.sub(reserved_chars, r"\\\1", text)
 
 # تابع دستور /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -107,7 +111,7 @@ async def start_generate_image(update: Update, context: ContextTypes.DEFAULT_TYP
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
-        "*🖼️ Generate Image Mode Activated!*\n\n_لطفاً سایز تصویر مورد نظر خود را انتخاب کنید:_",
+        "*🖼️ Generate Image Mode Activated!*\\n\\n_لطفاً سایز تصویر مورد نظر خود را انتخاب کنید:_",
         reply_markup=reply_markup,
         parse_mode="MarkdownV2"
     )
@@ -130,7 +134,7 @@ async def select_size(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🏠 Back to Home", callback_data="back_to_home")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
-        f"*سایز تصویر انتخاب شد:* {context.user_data['width']}x{context.user_data['height']}\n\n_عکس چی می‌خوای؟ یه پرامپت بگو (مثلاً: 'یه گربه توی جنگل')_",
+        f"*سایز تصویر انتخاب شد:* {context.user_data['width']}x{context.user_data['height']}\\n\\n_عکس چی می‌خوای؟ یه پرامپت بگو (مثلاً: 'یه گربه توی جنگل')_",
         reply_markup=reply_markup,
         parse_mode="MarkdownV2"
     )
@@ -149,23 +153,25 @@ async def get_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loading_message = await update.message.reply_text("*🖌️ در حال طراحی عکس... صبر کن!*", parse_mode="MarkdownV2")
     
     api_url = f"{IMAGE_API_URL}{prompt}?width={width}&height={height}&nologo=true"
-    try:
-        response = requests.get(api_url, timeout=30)
-        if response.status_code == 200:
+    async with ClientSession() as session:
+        try:
+            async with session.get(api_url, timeout=30) as response:
+                if response.status == 200:
+                    image_content = await response.read()
+                    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
+                    caption = f"*🖼 پرامپ شما:* {clean_text(prompt)}\\n_طراحی شده با جوجو 😌_"
+                    await update.message.reply_photo(
+                        photo=image_content,
+                        caption=caption,
+                        parse_mode="MarkdownV2"
+                    )
+                else:
+                    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
+                    await update.message.reply_text("اوفف، *یه مشکلی پیش اومد!* 😅 _دوباره امتحان کن_ 🚀", parse_mode="MarkdownV2")
+        except Exception as e:
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
-            caption = f"*🖼 پرامپ شما:* {clean_text(prompt)}\n_طراحی شده با جوجو 😌_"
-            await update.message.reply_photo(
-                photo=response.content,
-                caption=caption,
-                parse_mode="MarkdownV2"
-            )
-        else:
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
-            await update.message.reply_text("اوفف، *یه مشکلی پیش اومد!* 😅 _دوباره امتحان کن_ 🚀", parse_mode="MarkdownV2")
-    except Exception as e:
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
-        await update.message.reply_text("اییی، *خطا خوردم!* 😭 _بعداً دوباره بیا_ 🚀", parse_mode="MarkdownV2")
-        logger.error(f"خطا در تولید تصویر: {e}")
+            await update.message.reply_text("اییی، *خطا خوردم!* 😭 _بعداً دوباره بیا_ 🚀", parse_mode="MarkdownV2")
+            logger.error(f"خطا در تولید تصویر: {e}")
     
     return ConversationHandler.END
 
@@ -181,7 +187,7 @@ async def retry_generate_image(update: Update, context: ContextTypes.DEFAULT_TYP
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
-        "*🖼️ Generate Image Mode Activated!*\n\n_لطفاً سایز تصویر مورد نظر خود را انتخاب کنید:_",
+        "*🖼️ Generate Image Mode Activated!*\\n\\n_لطفاً سایز تصویر مورد نظر خود را انتخاب کنید:_",
         reply_markup=reply_markup,
         parse_mode="MarkdownV2"
     )
@@ -199,7 +205,7 @@ async def chat_with_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🏠 Back to Home", callback_data="back_to_home")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
-        "*🤖 چت با هوش مصنوعی فعال شد!*\n\n_هر چی می‌خوای بگو، من یادم می‌مونه چی گفتی!_ 😎",
+        "*🤖 چت با هوش مصنوعی فعال شد!*\\n\\n_هر چی می‌خوای بگو، من یادم می‌مونه چی گفتی!_ 😎",
         reply_markup=reply_markup,
         parse_mode="MarkdownV2"
     )
@@ -228,33 +234,35 @@ async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🏠 Back to Home", callback_data="back_to_home")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    try:
-        response = requests.post(TEXT_API_URL, json=payload, timeout=10)
-        if response.status_code == 200:
-            ai_response = response.text.strip()
-            chat_history.append({"role": "assistant", "content": ai_response})
-            context.user_data["chat_history"] = chat_history
-            await update.message.reply_text(ai_response, reply_markup=reply_markup, parse_mode="MarkdownV2")
-        else:
+    async with ClientSession() as session:
+        try:
+            async with session.post(TEXT_API_URL, json=payload, timeout=10) as response:
+                if response.status == 200:
+                    ai_response = await response.text()
+                    ai_response = ai_response.strip()
+                    chat_history.append({"role": "assistant", "content": ai_response})
+                    context.user_data["chat_history"] = chat_history
+                    await update.message.reply_text(ai_response, reply_markup=reply_markup, parse_mode="MarkdownV2")
+                else:
+                    await update.message.reply_text(
+                        "اوفف، *یه مشکلی پیش اومد!* 😅 _فکر کنم API یه کم خوابش برده! بعداً امتحان کن_ 🚀",
+                        reply_markup=reply_markup,
+                        parse_mode="MarkdownV2"
+                    )
+        except Exception as e:
+            logger.error(f"خطا در اتصال به API چت: {e}")
             await update.message.reply_text(
-                "اوفف، *یه مشکلی پیش اومد!* 😅 _فکر کنم API یه کم خوابش برده! بعداً امتحان کن_ 🚀",
+                "اییی، *خطا خوردم!* 😭 _بعداً دوباره بیا، قول می‌دم درستش کنم!_ 🚀",
                 reply_markup=reply_markup,
                 parse_mode="MarkdownV2"
             )
-    except Exception as e:
-        logger.error(f"خطا در اتصال به API چت: {e}")
-        await update.message.reply_text(
-            "اییی، *یه خطا خوردم!* 😭 _بعداً دوباره بیا، قول می‌دم درستش کنم!_ 🚀",
-            reply_markup=reply_markup,
-            parse_mode="MarkdownV2"
-        )
     
     return ConversationHandler.END
 
 # تابع مدیریت پیام‌های گروه
 async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_id = update.message.message_id
-    with PROCESSING_LOCK:  # اصلاح خطا: حذف کلمه اضافی historic
+    with PROCESSING_LOCK:
         if message_id in PROCESSED_MESSAGES:
             logger.warning(f"پیام تکراری در گروه با message_id: {message_id} - نادیده گرفته شد")
             return
@@ -290,7 +298,7 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            "*می‌تونم برات طراحی کنم!* 🎨\n_سایز عکس رو انتخاب کن:_",
+            "*می‌تونم برات طراحی کنم!* 🎨\\n_سایز عکس رو انتخاب کن:_",
             reply_to_message_id=update.message.message_id,
             reply_markup=reply_markup,
             parse_mode="MarkdownV2"
@@ -328,48 +336,50 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
         "jsonMode": False
     }
     
-    try:
-        response = requests.post(TEXT_API_URL, json=payload, timeout=10)
-        if response.status_code == 200:
-            ai_response = response.text.strip()
-            user_history.append({"role": "assistant", "content": ai_response})
-            context.user_data["group_chat_history"] = user_history
-            
-            # ذخیره اطلاعات کاربر اگه توی پاسخش باشه
-            if "اسمم" in user_message or "اسم من" in user_message:
-                name = user_message.split("اسمم")[-1].split("اسم من")[-1].strip()
-                context.user_data["name"] = name
-            if "سالمه" in user_message or "سنم" in user_message:
-                age = re.search(r'\d+', user_message)
-                if age:
-                    context.user_data["age"] = age.group()
-            if "زندگی می‌کنم" in user_message or "توی" in user_message:
-                location = user_message.split("توی")[-1].strip()
-                context.user_data["location"] = location
+    async with ClientSession() as session:
+        try:
+            async with session.post(TEXT_API_URL, json=payload, timeout=10) as response:
+                if response.status == 200:
+                    ai_response = await response.text()
+                    ai_response = ai_response.strip()
+                    user_history.append({"role": "assistant", "content": ai_response})
+                    context.user_data["group_chat_history"] = user_history
+                    
+                    # ذخیره اطلاعات کاربر اگه توی پاسخش باشه
+                    if "اسمم" in user_message or "اسم من" in user_message:
+                        name = user_message.split("اسمم")[-1].split("اسم من")[-1].strip()
+                        context.user_data["name"] = name
+                    if "سالمه" in user_message or "سنم" in user_message:
+                        age = re.search(r'\d+', user_message)
+                        if age:
+                            context.user_data["age"] = age.group()
+                    if "زندگی می‌کنم" in user_message or "توی" in user_message:
+                        location = user_message.split("توی")[-1].strip()
+                        context.user_data["location"] = location
 
-            await update.message.reply_text(
-                ai_response,
-                reply_to_message_id=update.message.message_id,
-                message_thread_id=thread_id,
-                parse_mode="MarkdownV2"
-            )
-        else:
-            error_message = "اوفف، *یه مشکلی پیش اومد!* 😅 _بعداً امتحان کن_ 🚀"
+                    await update.message.reply_text(
+                        ai_response,
+                        reply_to_message_id=update.message.message_id,
+                        message_thread_id=thread_id,
+                        parse_mode="MarkdownV2"
+                    )
+                else:
+                    error_message = "اوفف، *یه مشکلی پیش اومد!* 😅 _بعداً امتحان کن_ 🚀"
+                    await update.message.reply_text(
+                        error_message,
+                        reply_to_message_id=update.message.message_id,
+                        message_thread_id=thread_id,
+                        parse_mode="MarkdownV2"
+                    )
+        except Exception as e:
+            logger.error(f"خطا در اتصال به API چت گروه: {e}")
+            error_message = "اییی، *خطا خوردم!* 😭 _بعداً دوباره بیا_ 🚀"
             await update.message.reply_text(
                 error_message,
                 reply_to_message_id=update.message.message_id,
                 message_thread_id=thread_id,
                 parse_mode="MarkdownV2"
             )
-    except Exception as e:
-        logger.error(f"خطا در اتصال به API چت گروه: {e}")
-        error_message = "اییی، *یه خطا خوردم!* 😭 _بعداً دوباره بیا_ 🚀"
-        await update.message.reply_text(
-            error_message,
-            reply_to_message_id=update.message.message_id,
-            message_thread_id=thread_id,
-            parse_mode="MarkdownV2"
-        )
 
 # تابع انتخاب سایز عکس در گروه
 async def select_size_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -386,7 +396,7 @@ async def select_size_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["width"] = 1280
         context.user_data["height"] = 720
     await query.edit_message_text(
-        f"*سایز {context.user_data['width']}x{context.user_data['height']} انتخاب شد!*\n_عکس چی می‌خوای؟ یه پرامپت بگو یا به این پیام ریپلای کن 😎_",
+        f"*سایز {context.user_data['width']}x{context.user_data['height']} انتخاب شد!*\\n_عکس چی می‌خوای؟ یه پرامپت بگو یا به این پیام ریپلای کن 😎_",
         parse_mode="MarkdownV2"
     )
     context.user_data["state"] = "awaiting_prompt"
@@ -394,14 +404,12 @@ async def select_size_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # تابع دریافت پرامپت در گروه و تولید عکس
 async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # اگه توی حالت انتظار پرامپت نیستیم، چیزی نکن
     if "state" not in context.user_data or context.user_data["state"] != "awaiting_prompt":
         return
     
     user_message = update.message
     replied_message = user_message.reply_to_message
     
-    # چک کن اگه پیام ریپلای به رباته و توی حالت انتظار پرامپت هستیم
     if replied_message and replied_message.from_user.id == context.bot.id and "عکس چی می‌خوای؟" in replied_message.text:
         prompt = user_message.text.strip()
     else:
@@ -417,26 +425,28 @@ async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAUL
     loading_message = await user_message.reply_text("*🖌️ در حال طراحی عکس... صبر کن!*", parse_mode="MarkdownV2")
     
     api_url = f"{IMAGE_API_URL}{prompt}?width={width}&height={height}&nologo=true"
-    try:
-        response = requests.get(api_url, timeout=30)
-        if response.status_code == 200:
+    async with ClientSession() as session:
+        try:
+            async with session.get(api_url, timeout=30) as response:
+                if response.status == 200:
+                    image_content = await response.read()
+                    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
+                    caption = f"*🖼 پرامپ شما:* {clean_text(prompt)}\\n_طراحی شده با جوجو 😌_"
+                    await user_message.reply_photo(
+                        photo=image_content,
+                        caption=caption,
+                        reply_to_message_id=user_message.message_id,
+                        parse_mode="MarkdownV2"
+                    )
+                else:
+                    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
+                    await user_message.reply_text("اوفف، *یه مشکلی پیش اومد!* 😅 _دوباره امتحان کن_ 🚀", parse_mode="MarkdownV2")
+        except Exception as e:
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
-            caption = f"*🖼 پرامپ شما:* {clean_text(prompt)}\n_طراحی شده با جوجو 😌_"
-            await user_message.reply_photo(
-                photo=response.content,
-                caption=caption,
-                reply_to_message_id=user_message.message_id,
-                parse_mode="MarkdownV2"
-            )
-        else:
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
-            await user_message.reply_text("اوفف، *یه مشکلی پیش اومد!* 😅 _دوباره امتحان کن_ 🚀", parse_mode="MarkdownV2")
-    except Exception as e:
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
-        await user_message.reply_text("اییی، *خطا خوردم!* 😭 _بعداً دوباره بیا_ 🚀", parse_mode="MarkdownV2")
-        logger.error(f"خطا در تولید تصویر گروه: {e}")
+            await user_message.reply_text("اییی، *خطا خوردم!* 😭 _بعداً دوباره بیا_ 🚀", parse_mode="MarkdownV2")
+            logger.error(f"خطا در تولید تصویر گروه: {e}")
     
-    context.user_data.clear()  # ریست کردن حالت بعد از تولید عکس
+    context.user_data.clear()
 
 # تابع بازگشت به منوی اصلی
 async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -492,14 +502,11 @@ async def initialize_application():
     
     for attempt in range(max_retries):
         try:
-            # مقداردهی application
             application = Application.builder().token(TOKEN).read_timeout(60).write_timeout(60).connect_timeout(60).build()
             
-            # تنظیم وب‌هوک
             await application.bot.set_webhook(url=WEBHOOK_URL)
             logger.info(f"Webhook روی {WEBHOOK_URL} تنظیم شد.")
             
-            # تعریف Handlerها
             image_conv_handler = ConversationHandler(
                 entry_points=[
                     CallbackQueryHandler(start_generate_image, pattern="^generate_image$"),
@@ -533,8 +540,7 @@ async def initialize_application():
             logger.info("در حال شروع ربات...")
             await application.start()
             logger.info("ربات با موفقیت آماده شد!")
-            break  # اگه موفق بود، از حلقه خارج شو
-            
+            break
         except Exception as e:
             logger.error(f"خطا در تلاش {attempt + 1}/{max_retries}: {e}")
             if attempt < max_retries - 1:
@@ -544,10 +550,14 @@ async def initialize_application():
                 logger.error("همه تلاش‌ها برای شروع ربات ناموفق بود!")
                 raise
 
-# اجرای اولیه و سرور
+# تابع اجرای اصلی
+def main():
+    loop = asyncio.get_event_loop()
+    if loop.is_closed():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(initialize_application())
+    uvicorn.run(app, host="0.0.0.0", port=8000, loop="asyncio")
+
 if __name__ == "__main__":
-    # اجرای اولیه application
-    asyncio.run(initialize_application())
-    
-    # اجرای سرور Uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    main()

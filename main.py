@@ -28,7 +28,7 @@ PROCESSED_MESSAGES = set()
 PROCESSING_LOCK = Lock()
 
 SYSTEM_MESSAGE = (
-    "شما یک دستیار هستی که توی گروه‌های تلگرامی فعالیت می‌کنی و با کلمه *ربات* و *جوجو* می‌تونی به کاربرا جواب بدی\\. "
+    "شما یک دستیار هستی که توی گروه‌های تلگرامی فعالیت می‌کنی و با کلمه *ربات* و *جوجو* و *جوجه* و *سلام* و *خداحافظ* می‌تونی به کاربرا جواب بدی\\. "
     "اگه کاربر روی پیامت ریپلای کنه، باهاش چت می‌کنی\\. "
     "هر کاربر چت‌هاش جداگونه براش ثبت می‌شه و تو به همه حرفایی که قبلاً زده دسترسی داری\\. "
     "اسم کاربر رو بپرس تا باهاش راحت باشی\\. "
@@ -81,7 +81,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"سلام {user_name} جووون! 👋\nبه *PlatoDex* خوش اومدی! 🤖\n"
         "من یه ربات باحالم که توی گروه‌ها می‌چرخم و با همه کل‌کل می‌کنم 😎\n"
         "قابلیت خفنم اینه که حرفاتو یادم می‌مونه و جداگونه برات نگه می‌دارم! 💾\n"
-        "فقط کافیه توی گروه بگی *ربات* یا *جوجو* یا به پیامم ریپلای کنی، منم می‌پرم وسط! 🚀"
+        "فقط کافیه توی گروه بگی *ربات* یا *جوجو* یا *جوجه* یا *سلام* یا *خداحافظ* یا به پیامم ریپلای کنی، منم می‌پرم وسط! 🚀\n"
+        "اگه بگی *عکس* برات یه عکس خفن طراحی می‌کنم! 🖼️"
     )
     keyboard = [
         [InlineKeyboardButton("Chat with AI 🤖", callback_data="chat_with_ai")],
@@ -126,7 +127,7 @@ async def select_size(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🏠 Back to Home", callback_data="back_to_home")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
-        clean_text(f"سایز تصویر انتخاب شد: {context.user_data['width']}x{context.user_data['height']}\n\nلطفاً توضیحات تصویر (پرامپت) را وارد کنید. مثلاً: 'A cat in a forest'"),
+        clean_text(f"سایز تصویر انتخاب شد: {context.user_data['width']}x{context.user_data['height']}\n\nعکس چی می‌خوای؟ یه پرامپت بگو (مثلاً: 'یه گربه توی جنگل')"),
         reply_markup=reply_markup,
         parse_mode="MarkdownV2"
     )
@@ -136,31 +137,31 @@ async def select_size(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = update.message.text.strip()
     if not prompt:
-        await update.message.reply_text(clean_text("لطفاً یک توضیح برای تصویر وارد کنید!"), parse_mode="MarkdownV2")
+        await update.message.reply_text(clean_text("لطفاً بگو عکس چی می‌خوای! یه پرامپت بده 😜"), parse_mode="MarkdownV2")
         return GET_PROMPT
     
     width = context.user_data["width"]
     height = context.user_data["height"]
     
-    loading_message = await update.message.reply_text(clean_text("🖌️ در حال طراحی عکس... لطفاً صبر کنید."), parse_mode="MarkdownV2")
+    loading_message = await update.message.reply_text(clean_text("🖌️ در حال طراحی عکس... صبر کن!"), parse_mode="MarkdownV2")
     
     api_url = f"{IMAGE_API_URL}{prompt}?width={width}&height={height}&nologo=true"
     try:
         response = requests.get(api_url, timeout=30)
         if response.status_code == 200:
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
-            keyboard = [
-                [InlineKeyboardButton("↩️ برگشت", callback_data="retry_generate_image")],
-                [InlineKeyboardButton("🏠 Back to Home", callback_data="back_to_home")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_photo(photo=response.content, reply_markup=reply_markup)
+            caption = clean_text(f"🖼 پرامپ شما: {prompt}\nطراحی شده با جوجو 😌")
+            await update.message.reply_photo(
+                photo=response.content,
+                caption=caption,
+                parse_mode="MarkdownV2"
+            )
         else:
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
-            await update.message.reply_text(clean_text("مشکلی در تولید تصویر پیش آمد. لطفاً دوباره امتحان کنید."), parse_mode="MarkdownV2")
+            await update.message.reply_text(clean_text("اوفف، یه مشکلی پیش اومد! 😅 دوباره امتحان کن 🚀"), parse_mode="MarkdownV2")
     except Exception as e:
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
-        await update.message.reply_text(clean_text("خطایی رخ داد. لطفاً بعداً امتحان کنید."), parse_mode="MarkdownV2")
+        await update.message.reply_text(clean_text("اییی، خطا خوردم! 😭 بعداً دوباره بیا 🚀"), parse_mode="MarkdownV2")
         logger.error(f"خطا در تولید تصویر: {e}")
     
     return ConversationHandler.END
@@ -272,10 +273,27 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
     
     # شرط‌های پاسخگویی
     should_reply = (
-        "ربات" in user_message or "جوجو" in user_message or
+        "ربات" in user_message or "جوجو" in user_message or "جوجه" in user_message or
+        "سلام" in user_message or "خداحافظ" in user_message or
         (replied_message and replied_message.from_user.id == context.bot.id)
     )
     
+    # مدیریت درخواست عکس
+    if "عکس" in user_message:
+        keyboard = [
+            [InlineKeyboardButton("512x512", callback_data="size_512x512_photo")],
+            [InlineKeyboardButton("1024x1024", callback_data="size_1024x1024_photo")],
+            [InlineKeyboardButton("1280x720", callback_data="size_1280x720_photo")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            clean_text("می‌تونم برات طراحی کنم! 🎨\nسایز عکس رو انتخاب کن:"),
+            reply_to_message_id=update.message.message_id,
+            reply_markup=reply_markup,
+            parse_mode="MarkdownV2"
+        )
+        return
+
     if not should_reply:
         return
     
@@ -325,6 +343,64 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
             parse_mode="MarkdownV2"
         )
 
+# تابع انتخاب سایز عکس در گروه
+async def select_size_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    size = query.data
+    if size == "size_512x512_photo":
+        context.user_data["width"] = 512
+        context.user_data["height"] = 512
+    elif size == "size_1024x1024_photo":
+        context.user_data["width"] = 1024
+        context.user_data["height"] = 1024
+    elif size == "size_1280x720_photo":
+        context.user_data["width"] = 1280
+        context.user_data["height"] = 720
+    await query.edit_message_text(
+        clean_text(f"سایز {context.user_data['width']}x{context.user_data['height']} انتخاب شد!\nعکس چی می‌خوای؟ یه پرامپت بگو 😎"),
+        parse_mode="MarkdownV2"
+    )
+    context.user_data["state"] = "awaiting_prompt"
+    return
+
+# تابع دریافت پرامپت در گروه و تولید عکس
+async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("state") != "awaiting_prompt":
+        return
+    
+    prompt = update.message.text.strip()
+    if not prompt:
+        await update.message.reply_text(clean_text("لطفاً بگو عکس چی می‌خوای! یه پرامپت بده 😜"), parse_mode="MarkdownV2")
+        return
+    
+    width = context.user_data["width"]
+    height = context.user_data["height"]
+    
+    loading_message = await update.message.reply_text(clean_text("🖌️ در حال طراحی عکس... صبر کن!"), parse_mode="MarkdownV2")
+    
+    api_url = f"{IMAGE_API_URL}{prompt}?width={width}&height={height}&nologo=true"
+    try:
+        response = requests.get(api_url, timeout=30)
+        if response.status_code == 200:
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
+            caption = clean_text(f"🖼 پرامپ شما: {prompt}\nطراحی شده با جوجو 😌")
+            await update.message.reply_photo(
+                photo=response.content,
+                caption=caption,
+                reply_to_message_id=update.message.message_id,
+                parse_mode="MarkdownV2"
+            )
+        else:
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
+            await update.message.reply_text(clean_text("اوفف، یه مشکلی پیش اومد! 😅 دوباره امتحان کن 🚀"), parse_mode="MarkdownV2")
+    except Exception as e:
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=loading_message.message_id)
+        await update.message.reply_text(clean_text("اییی، خطا خوردم! 😭 بعداً دوباره بیا 🚀"), parse_mode="MarkdownV2")
+        logger.error(f"خطا در تولید تصویر گروه: {e}")
+    
+    context.user_data.clear()  # ریست کردن حالت بعد از تولید عکس
+
 # تابع بازگشت به منوی اصلی
 async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -338,7 +414,8 @@ async def back_to_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"سلام {user_name} جووون! 👋\nبه *PlatoDex* خوش اومدی! 🤖\n"
         "من یه ربات باحالم که توی گروه‌ها می‌چرخم و با همه کل‌کل می‌کنم 😎\n"
         "قابلیت خفنم اینه که حرفاتو یادم می‌مونه و جداگونه برات نگه می‌دارم! 💾\n"
-        "فقط کافیه توی گروه بگی *ربات* یا *جوجو* یا به پیامم ریپلای کنی، منم می‌پرم وسط! 🚀"
+        "فقط کافیه توی گروه بگی *ربات* یا *جوجو* یا *جوجه* یا *سلام* یا *خداحافظ* یا به پیامم ریپلای کنی، منم می‌پرم وسط! 🚀\n"
+        "اگه بگی *عکس* برات یه عکس خفن طراحی می‌کنم! 🖼️"
     )
     keyboard = [
         [InlineKeyboardButton("Chat with AI 🤖", callback_data="chat_with_ai")],
@@ -406,8 +483,10 @@ async def initialize_application():
             application.add_handler(image_conv_handler)
             application.add_handler(CallbackQueryHandler(chat_with_ai, pattern="^chat_with_ai$"))
             application.add_handler(CallbackQueryHandler(back_to_home, pattern="^back_to_home$"))
+            application.add_handler(CallbackQueryHandler(select_size_photo, pattern="^size_.*_photo$"))
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_ai_message))
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, handle_group_ai_message))
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, handle_group_photo_prompt))
             application.add_error_handler(error_handler)
             
             logger.info("در حال آماده‌سازی ربات...")

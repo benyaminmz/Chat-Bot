@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 TOKEN = '8045348833:AAEZDh60grBIHTz5mOUYEHK7ZLEV7B2npTc'
 IMAGE_API_URL = 'https://pollinations.ai/prompt/'
 TEXT_API_URL = 'https://text.pollinations.ai/'
-VOICE_API_URL = 'https://text.pollinations.ai/'  # برای صوت از همین استفاده می‌کنیم
+VOICE_API_URL = 'https://text.pollinations.ai/'
 WEBHOOK_URL = "https://chat-bot-9v1s.onrender.com/webhook"
 AI_CHAT_USERS = set()
 SELECT_SIZE, GET_PROMPT = range(2)
@@ -394,7 +394,7 @@ async def handle_group_ai_message(update: Update, context: ContextTypes.DEFAULT_
             parse_mode="HTML"
         )
 
-# تابع انتخاب سایز عکس در گروه
+# تابع انتخاب سایز عکس در گروه (اصلاح‌شده)
 async def select_size_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -408,9 +408,7 @@ async def select_size_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif size == "size_1280x720_photo":
         context.user_data["width"] = 1280
         context.user_data["height"] = 720
-    await
-
- query.edit_message_text(
+    await query.edit_message_text(
         f"<b>سایز {context.user_data['width']}x{context.user_data['height']} انتخاب شد!</b><br><i>عکس چی می‌خوای؟ یه پرامپت بگو 😎</i>",
         parse_mode="HTML"
     )
@@ -459,7 +457,7 @@ async def handle_group_photo_prompt(update: Update, context: ContextTypes.DEFAUL
     
     context.user_data.clear()
 
-# تابع تبدیل متن به وویس (با تغییرات جدید)
+# تابع تبدیل متن به وویس
 async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -508,7 +506,7 @@ async def convert_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "messages": [
             {"role": "user", "content": full_text}
         ],
-        "voice": "sage"  # تغییر به sage
+        "voice": "sage"
     }
     
     loading_message = await context.bot.send_message(
